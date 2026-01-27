@@ -20,6 +20,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useWalletStore } from '@/stores';
 import * as Clipboard from 'expo-clipboard';
+import { QRCode } from '@/components/QRCode';
 
 // 主题色
 const THEME_COLOR = '#B2955D';
@@ -539,10 +540,16 @@ export default function ProfilePage() {
               <Text style={styles.modalTitle}>收款二维码</Text>
             </View>
 
-            {/* 二维码占位 */}
-            <View style={styles.qrPlaceholder}>
-              <Ionicons name="qr-code-outline" size={120} color={THEME_COLOR} />
-              <Text style={styles.qrPlaceholderText}>二维码</Text>
+            {/* 二维码 */}
+            <View style={styles.qrContainer}>
+              {address ? (
+                <QRCode value={address} size={180} color={THEME_COLOR} backgroundColor="#FFF" />
+              ) : (
+                <View style={styles.qrPlaceholder}>
+                  <Ionicons name="qr-code-outline" size={120} color={THEME_COLOR} />
+                  <Text style={styles.qrPlaceholderText}>无钱包地址</Text>
+                </View>
+              )}
             </View>
 
             <Text style={styles.addressLabel}>我的钱包地址</Text>
@@ -1157,7 +1164,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   // 收款弹窗
-  qrPlaceholder: {
+  qrContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
@@ -1169,6 +1176,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 4,
+  },
+  qrPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
   },
   qrPlaceholderText: {
     marginTop: 8,

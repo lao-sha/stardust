@@ -93,28 +93,13 @@ impl pallet_balances::Config for Test {
 	type AccountStore = System;
 }
 
-// 存储押金配置参数
-parameter_types! {
-	/// 每 KB 存储押金（测试值：100）
-	pub const StorageDepositPerKb: u128 = 100;
-	/// 最小存储押金（测试值：10）
-	pub const MinStorageDeposit: u128 = 10;
-	/// 最大存储押金（测试值：100_000_000）
-	pub const MaxStorageDeposit: u128 = 100_000_000;
-}
-
 impl pallet_bazi_chart::Config for Test {
 	type WeightInfo = ();
 	type MaxChartsPerAccount = ConstU32<10>;
 	type MaxDaYunSteps = ConstU32<12>;
 	type MaxCangGan = ConstU32<3>;
-	// 隐私模块集成
 	type PrivacyProvider = MockPrivacyProvider;
-	// 存储押金相关配置
 	type Currency = Balances;
-	type StorageDepositPerKb = StorageDepositPerKb;
-	type MinStorageDeposit = MinStorageDeposit;
-	type MaxStorageDeposit = MaxStorageDeposit;
 }
 
 // 构建测试用的存储

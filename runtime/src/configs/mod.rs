@@ -24,6 +24,7 @@
 // For more information, please refer to <http://unlicense.org>
 
 // Substrate and Polkadot dependencies
+use sp_runtime::traits::AccountIdConversion;
 use frame_support::{
 	derive_impl, parameter_types,
 	traits::{ConstBool, ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, VariantCountOf, EitherOfDiverse},
@@ -225,19 +226,30 @@ impl pallet_tee_privacy::Config for Runtime {
 	type WeightInfo = pallet_tee_privacy::weights::SubstrateWeight<Runtime>;
 }
 
-// -------------------- AI 解读模块 --------------------
+// -------------------- 全局系统账户（简化方案：4 个核心账户）--------------------
 
 parameter_types! {
-	pub TreasuryAccountId: AccountId = sp_runtime::AccountId32::new([0u8; 32]);
+	// 1. 国库账户 - 核心账户，含平台收入、存储补贴
+	pub const TreasuryPalletId: frame_support::PalletId = frame_support::PalletId(*b"py/trsry");
+	pub TreasuryAccountId: AccountId = TreasuryPalletId::get().into_account_truncating();
+	
+	// 2. 销毁账户 - 专用于代币销毁，必须独立
+	pub const BurnPalletId: frame_support::PalletId = frame_support::PalletId(*b"py/burn!");
+	pub BurnAccountId: AccountId = BurnPalletId::get().into_account_truncating();
 }
+
+
+// -------------------- AI 解读模块 --------------------
 
 impl pallet_divination_ai::Config for Runtime {
 	type AiCurrency = Balances;
 	type DivinationProvider = pallet_divination_common::NullDivinationProvider;
-	type ContentRegistry = pallet_stardust_ipfs::Pallet<Runtime>;
+	type ContentRegistry = pallet_storage_service::Pallet<Runtime>;
 	type BaseInterpretationFee = ConstU128<{ 1 * UNIT }>;
 	type MinOracleStake = ConstU128<{ 10 * UNIT }>;
 	type DisputeDeposit = ConstU128<{ UNIT / 2 }>;
+	type DisputeDepositUsd = ConstU64<1_000_000>; // 1 USDT
+	type DepositCalculator = pallet_trading_common::DepositCalculatorImpl<TradingPricingProvider, Balance>;
 	type RequestTimeout = ConstU32<{ 10 * MINUTES }>;
 	type ProcessingTimeout = ConstU32<{ 5 * MINUTES }>;
 	type DisputePeriod = ConstU32<{ 1 * HOURS }>;
@@ -250,14 +262,10 @@ impl pallet_divination_ai::Config for Runtime {
 
 // -------------------- Market (服务市场) --------------------
 
-parameter_types! {
-	pub PlatformAccountId: AccountId = sp_runtime::AccountId32::new([1u8; 32]);
-}
-
 impl pallet_divination_market::Config for Runtime {
 	type Currency = Balances;
 	type DivinationProvider = pallet_divination_common::NullDivinationProvider;
-	type ContentRegistry = pallet_stardust_ipfs::Pallet<Runtime>;
+	type ContentRegistry = pallet_storage_service::Pallet<Runtime>;
 	type MinDeposit = ConstU128<{ 10 * UNIT }>;  // 最低保证金 10 DUST（兜底值）
 	type MinDepositUsd = ConstU64<100_000_000>;  // 最低保证金 100 USDT（精度10^6，使用pricing换算）
 	type Pricing = TradingPricingProvider;  // 定价接口
@@ -273,14 +281,17 @@ impl pallet_divination_market::Config for Runtime {
 	type MaxCidLength = ConstU32<64>;
 	type MaxPackagesPerProvider = ConstU32<10>;
 	type MaxFollowUpsPerOrder = ConstU32<5>;
-	type PlatformAccount = PlatformAccountId;
+	type PlatformAccount = TreasuryAccountId;
 	type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
 	type TreasuryAccount = TreasuryAccountId;
 	// 🆕 联盟计酬集成 - Using stub until pallet_affiliate is integrated
 	type AffiliateDistributor = StubAffiliateDistributor;
-	type AffiliateFeeRatio = ConstU16<5000>;  // 50% 平台抽成用于联盟分成
 	// 🆕 解读修改窗口（2天 ≈ 28800 blocks，按6秒/块）
 	type InterpretationEditWindow = ConstU32<28800>;
+	// 🆕 聊天权限集成（订单创建时自动授权双方聊天）
+	type ChatPermission = pallet_chat_permission::Pallet<Runtime>;
+	// 🆕 订单聊天授权有效期（30天 ≈ 432000 blocks，按6秒/块）
+	type OrderChatDuration = ConstU32<{ 30 * DAYS }>;
 }
 
 // Stub implementation for AffiliateDistributor until pallet_affiliate is integrated
@@ -296,12 +307,21 @@ impl pallet_affiliate::types::AffiliateDistributor<AccountId, u128, BlockNumber>
 	}
 }
 
+// UserFundingProvider 实现 - 使用存储服务模块的派生账户
+pub struct StorageUserFundingProvider;
+
+impl pallet_affiliate::UserFundingProvider<AccountId> for StorageUserFundingProvider {
+	fn derive_user_funding_account(user: &AccountId) -> AccountId {
+		pallet_storage_service::Pallet::<Runtime>::derive_user_funding_account(user)
+	}
+}
+
 // -------------------- NFT 模块 --------------------
 
 impl pallet_divination_nft::Config for Runtime {
 	type NftCurrency = Balances;
 	type DivinationProvider = pallet_divination_common::NullDivinationProvider;
-	type ContentRegistry = pallet_stardust_ipfs::Pallet<Runtime>;
+	type ContentRegistry = pallet_storage_service::Pallet<Runtime>;
 	type MaxNameLength = ConstU32<64>;
 	type MaxCidLength = ConstU32<128>;
 	type MaxCollectionsPerUser = ConstU32<50>;
@@ -311,7 +331,7 @@ impl pallet_divination_nft::Config for Runtime {
 	type PlatformFeeRate = ConstU16<250>; // 2.5%
 	type MaxRoyaltyRate = ConstU16<2500>; // 25%
 	type OfferValidityPeriod = ConstU32<{ 7 * DAYS }>;
-	type PlatformAccount = PlatformAccountId;
+	type PlatformAccount = TreasuryAccountId;
 	type GovernanceOrigin = frame_system::EnsureRoot<AccountId>;
 }
 
@@ -433,7 +453,6 @@ impl pallet_bazi_chart::Config for Runtime {
 	type MaxChartsPerAccount = ConstU32<100>;
 	type MaxDaYunSteps = ConstU32<12>;
 	type MaxCangGan = ConstU32<3>;
-	type Currency = Balances;
 	type PrivacyProvider = BaziPrivacyProvider;
 }
 
@@ -572,9 +591,15 @@ parameter_types! {
 	pub const ChatGroupPalletId: frame_support::PalletId = frame_support::PalletId(*b"py/chatg");
 }
 
+parameter_types! {
+	pub const GroupDeposit: Balance = 50 * UNIT; // 创建群组保证金兜底值 50 DUST
+	pub const GroupDepositUsd: u64 = 5_000_000; // 创建群组保证金 5 USDT（精度10^6）
+}
+
 impl pallet_chat_group::Config for Runtime {
 	type Randomness = CollectiveFlipRandomness;
 	type TimeProvider = TimestampProvider;
+	type Currency = Balances;
 	type MaxGroupNameLen = ConstU32<64>;
 	type MaxGroupDescriptionLen = ConstU32<256>;
 	type MaxGroupMembers = ConstU32<1000>;
@@ -586,6 +611,11 @@ impl pallet_chat_group::Config for Runtime {
 	type PalletId = ChatGroupPalletId;
 	type MessageRateLimit = ConstU32<60>; // 每分钟最多60条消息
 	type GroupCreationCooldown = ConstU32<{ 10 * MINUTES }>; // 创建群组冷却时间
+	type GroupDeposit = GroupDeposit;
+	type GroupDepositUsd = GroupDepositUsd;
+	type DepositCalculator = pallet_trading_common::DepositCalculatorImpl<TradingPricingProvider, Balance>;
+	type TreasuryAccount = TreasuryAccountId;
+	type GovernanceOrigin = EnsureRoot<AccountId>;
 	type WeightInfo = ();
 }
 
@@ -605,9 +635,9 @@ impl pallet_livestream::Config for Runtime {
 	type MaxCoHostsPerRoom = ConstU32<4>;
 	type PlatformFeePercent = ConstU8<20>; // 20% 平台抽成
 	type MinWithdrawAmount = ConstU128<{ 1 * UNIT }>; // 最小提现 1 DUST
-	type RoomBond = ConstU128<{ UNIT / 20 }>; // 创建直播间保证金兜底值 0.05 DUST（约0.5 USDT @$10/DUST）
-	type RoomBondUsd = ConstU64<5_000_000>; // 创建直播间保证金 5 USDT（精度10^6，使用pricing换算）
-	type Pricing = TradingPricingProvider; // 定价接口
+	type RoomBond = ConstU128<{ UNIT / 20 }>; // 创建直播间保证金兜底值 0.05 DUST
+	type RoomBondUsd = ConstU64<5_000_000>; // 创建直播间保证金 5 USDT
+	type DepositCalculator = pallet_trading_common::DepositCalculatorImpl<TradingPricingProvider, Balance>;
 	type PalletId = LivestreamPalletId;
 	// 🆕 封禁权限：内容委员会 1/2 多数
 	type GovernanceOrigin = pallet_collective::EnsureProportionAtLeast<AccountId, ContentCollectiveInstance, 1, 2>;
@@ -680,7 +710,7 @@ impl pallet_trading_maker::Config for Runtime {
 	type Pricing = TradingPricingProvider;
 	type MakerApplicationTimeout = ConstU32<{ 7 * DAYS }>;
 	type WithdrawalCooldown = ConstU32<{ 7 * DAYS }>;
-	type ContentRegistry = pallet_stardust_ipfs::Pallet<Runtime>;
+	type ContentRegistry = pallet_storage_service::Pallet<Runtime>;
 	type WeightInfo = ();
 	type TreasuryAccount = TreasuryAccountId; // 国库账户
 }
@@ -751,7 +781,7 @@ impl pallet_trading_swap::Config for Runtime {
 	type TxHashTtlBlocks = ConstU32<{ 30 * DAYS }>;
 	type WeightInfo = ();
 	// 🆕 P3: 仲裁证据 CID 锁定管理器（预留，待 submit_evidence 函数实现后启用）
-	type CidLockManager = pallet_stardust_ipfs::Pallet<Runtime>;
+	type CidLockManager = pallet_storage_service::Pallet<Runtime>;
 }
 
 // -------------------- OTC (场外交易) --------------------
@@ -850,7 +880,7 @@ impl pallet_trading_otc::Config for Runtime {
 	type ArbitratorOrigin = frame_system::EnsureRoot<AccountId>;
 	type WeightInfo = ();
 	// 🆕 P3: 争议证据 CID 锁定管理器
-	type CidLockManager = pallet_stardust_ipfs::Pallet<Runtime>;
+	type CidLockManager = pallet_storage_service::Pallet<Runtime>;
 }
 
 // ============================================================================
@@ -931,20 +961,22 @@ impl pallet_referral::Config for Runtime {
 	type WeightInfo = pallet_referral::weights::SubstrateWeight<Runtime>;
 }
 
-// -------------------- Stardust IPFS (IPFS存储) --------------------
+// -------------------- Storage Service (存储服务) --------------------
 
 parameter_types! {
-	pub const IpfsSubjectPalletId: frame_support::PalletId = frame_support::PalletId(*b"py/ipfss");
-	pub IpfsFeeCollector: AccountId = sp_runtime::AccountId32::new([2u8; 32]);
-	pub IpfsPoolAccountId: AccountId = sp_runtime::AccountId32::new([3u8; 32]);
-	pub OperatorEscrowAccountId: AccountId = sp_runtime::AccountId32::new([4u8; 32]);
+	// 3. 存储服务主账户 - 核心账户，含费用收集
+	pub const StorageServicePalletId: frame_support::PalletId = frame_support::PalletId(*b"py/storg");
+	pub StoragePoolAccountId: AccountId = StorageServicePalletId::get().into_account_truncating();
+	
+	// 4. 运营商托管账户 - 必须独立
+	pub OperatorEscrowAccountId: AccountId = StorageServicePalletId::get().into_sub_account_truncating(b"escrow");
 }
 
-impl pallet_stardust_ipfs::Config for Runtime {
+impl pallet_storage_service::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type Currency = Balances;
 	type Balance = Balance;
-	type FeeCollector = IpfsFeeCollector;
+	type FeeCollector = StoragePoolAccountId;
 	// 内容委员会 1/2 多数通过（P0 治理集成）
 	type GovernanceOrigin = pallet_collective::EnsureProportionAtLeast<
 		AccountId,
@@ -954,10 +986,12 @@ impl pallet_stardust_ipfs::Config for Runtime {
 	type MaxCidHashLen = ConstU32<64>;
 	type MaxPeerIdLen = ConstU32<128>;
 	type MinOperatorBond = ConstU128<{ 100 * UNIT }>;
+	type MinOperatorBondUsd = ConstU64<100_000_000>; // 100 USDT
+	type DepositCalculator = pallet_trading_common::DepositCalculatorImpl<TradingPricingProvider, Balance>;
 	type MinCapacityGiB = ConstU32<10>;
 	type WeightInfo = ();
-	type SubjectPalletId = IpfsSubjectPalletId;
-	type IpfsPoolAccount = IpfsPoolAccountId;
+	type SubjectPalletId = StorageServicePalletId;
+	type IpfsPoolAccount = StoragePoolAccountId;
 	type OperatorEscrowAccount = OperatorEscrowAccountId;
 	type MonthlyPublicFeeQuota = ConstU128<{ 10 * UNIT }>;
 	type QuotaResetPeriod = ConstU32<{ 30 * DAYS }>;
@@ -1004,7 +1038,7 @@ impl pallet_evidence::Config for Runtime {
 	type MaxListLen = ConstU32<100>;
 	type WeightInfo = pallet_evidence::weights::SubstrateWeight<Runtime>;
 	// IPFS 相关
-	type IpfsPinner = pallet_stardust_ipfs::Pallet<Runtime>;
+	type IpfsPinner = pallet_storage_service::Pallet<Runtime>;
 	type Balance = Balance;
 	type DefaultStoragePrice = ConstU128<{ UNIT / 10 }>;
 	// 🆕 证据修改窗口（2天 ≈ 28800 blocks，按6秒/块）
@@ -1145,8 +1179,8 @@ impl pallet_arbitration::pallet::ArbitrationRouter<AccountId, Balance> for Unifi
 				Ok(maker_app.owner)
 			},
 			_ => {
-				// 对于其他域，返回固定账户（系统账户）
-				Ok(sp_runtime::AccountId32::new([5u8; 32]))
+				// 对于其他域，返回平台账户（PalletId 派生）
+				Ok(TreasuryAccountId::get())
 			}
 		}
 	}
@@ -1230,7 +1264,7 @@ impl pallet_arbitration::pallet::Config for Runtime {
 	type ComplaintSlashBps = ConstU16<5000>; // 投诉败诉罚没50%
 	type TreasuryAccount = TreasuryAccountId;
 	// 🆕 P2: CID 锁定管理器
-	type CidLockManager = pallet_stardust_ipfs::Pallet<Runtime>;
+	type CidLockManager = pallet_storage_service::Pallet<Runtime>;
 	// 🆕 信用分更新器
 	type CreditUpdater = TradingCreditUpdater;
 }
@@ -1415,6 +1449,111 @@ impl pallet_collective_membership::Config<ContentMembershipInstance> for Runtime
 	type MembershipChanged = ContentCommittee;
 	type MaxMembers = ContentMaxMembers;
 	type WeightInfo = pallet_collective_membership::weights::SubstrateWeight<Runtime>;
+}
+
+// ============================================================================
+// Divination Membership Pallet Configuration
+// ============================================================================
+
+parameter_types! {
+	pub const DivinationMembershipPalletId: frame_support::PalletId = frame_support::PalletId(*b"div/memb");
+	pub const RewardPoolAllocation: u32 = 1000; // 10% 分配到奖励池
+	pub const NewAccountCooldown: BlockNumber = 7 * DAYS; // 7天冷却期
+	pub const MinBalanceForRewards: Balance = UNIT; // 最低 1 DUST
+	pub const BlocksPerDay: BlockNumber = DAYS; // 每天区块数
+	pub const BlocksPerMonth: BlockNumber = 30 * DAYS; // 每月区块数
+	pub const MaxDisplayNameLength: u32 = 64;
+	pub const MaxEncryptedDataLength: u32 = 1024;
+	pub const MaxRewardHistorySize: u32 = 50;
+}
+
+impl pallet_divination_membership::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type Currency = Balances;
+	type WeightInfo = ();
+	type PalletId = DivinationMembershipPalletId;
+	type TreasuryAccount = TreasuryAccountId;
+	type BurnAccount = BurnAccountId;
+	type UserFundingProvider = StorageUserFundingProvider;
+	type AffiliateDistributor = StubAffiliateDistributor;
+	type RewardPoolAllocation = RewardPoolAllocation;
+	type NewAccountCooldown = NewAccountCooldown;
+	type MinBalanceForRewards = MinBalanceForRewards;
+	type BlocksPerDay = BlocksPerDay;
+	type BlocksPerMonth = BlocksPerMonth;
+	type MaxDisplayNameLength = MaxDisplayNameLength;
+	type MaxEncryptedDataLength = MaxEncryptedDataLength;
+	type MaxRewardHistorySize = MaxRewardHistorySize;
+	type Pricing = TradingPricingProvider;
+}
+
+// ============================================================================
+// Matchmaking Membership Pallet Configuration
+// ============================================================================
+
+parameter_types! {
+	pub const MatchmakingBlocksPerMonth: BlockNumber = 30 * DAYS;
+	pub const MatchmakingBlocksPerDay: BlockNumber = DAYS;
+	pub const MatchmakingMonthlyFee: Balance = 10 * UNIT; // 兜底值 10 DUST
+	pub const MatchmakingMonthlyFeeUsd: u64 = 10_000_000; // 10 USDT
+	pub const MatchmakingLifetimeFee: Balance = 500 * UNIT; // 兜底值 500 DUST
+	pub const MatchmakingLifetimeFeeUsd: u64 = 500_000_000; // 500 USDT
+	// Profile 保证金配置
+	pub const ProfileDeposit: Balance = 500 * UNIT; // 兜底值 500 DUST
+	pub const ProfileDepositUsd: u64 = 50_000_000; // 50 USDT
+	pub const ProfileMonthlyFee: Balance = 20 * UNIT; // 兜底值 20 DUST
+	pub const ProfileMonthlyFeeUsd: u64 = 2_000_000; // 2 USDT
+}
+
+impl pallet_matchmaking_membership::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = ();
+	type Fungible = Balances;
+	type Balance = Balance;
+	type BlocksPerMonth = MatchmakingBlocksPerMonth;
+	type BlocksPerDay = MatchmakingBlocksPerDay;
+	type MonthlyFee = MatchmakingMonthlyFee;
+	type MonthlyFeeUsd = MatchmakingMonthlyFeeUsd;
+	type LifetimeFee = MatchmakingLifetimeFee;
+	type LifetimeFeeUsd = MatchmakingLifetimeFeeUsd;
+	type Pricing = TradingPricingProvider;
+	type TreasuryAccount = TreasuryAccountId;
+	type BurnAccount = BurnAccountId;
+	type UserFundingProvider = StorageUserFundingProvider;
+	type AffiliateDistributor = StubAffiliateDistributor;
+}
+
+// ============================================================================
+// Matchmaking Profile Pallet Configuration
+// ============================================================================
+
+impl pallet_matchmaking_profile::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type MaxNicknameLen = ConstU32<64>;
+	type MaxLocationLen = ConstU32<128>;
+	type MaxCidLen = ConstU32<64>;
+	type MaxBioLen = ConstU32<512>;
+	type MaxDescLen = ConstU32<256>;
+	type MaxOccupationLen = ConstU32<64>;
+	type MaxTraits = ConstU32<10>;
+	type MaxHobbies = ConstU32<20>;
+	type MaxHobbyLen = ConstU32<32>;
+	type WeightInfo = ();
+	type Fungible = Balances;
+	type RuntimeHoldReason = RuntimeHoldReason;
+	type ProfileDeposit = ProfileDeposit;
+	type ProfileDepositUsd = ProfileDepositUsd;
+	type MonthlyFee = ProfileMonthlyFee;
+	type MonthlyFeeUsd = ProfileMonthlyFeeUsd;
+	type Pricing = TradingPricingProvider;
+	type TreasuryAccount = TreasuryAccountId;
+	type BurnAccount = BurnAccountId;
+	type StorageAccount = StoragePoolAccountId;
+	type AffiliateDistributor = StubAffiliateDistributor;
+	type IpfsPinner = pallet_storage_service::Pallet<Runtime>;
+	type GovernanceOrigin = EnsureRoot<AccountId>;
+	type BlocksPerDay = MatchmakingBlocksPerDay;
+	type Balance = Balance;
 }
 
 // ============================================================================

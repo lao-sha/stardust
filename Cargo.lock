@@ -6381,6 +6381,7 @@ dependencies = [
  "pallet-balances",
  "pallet-referral",
  "pallet-timestamp",
+ "pallet-trading-common",
  "parity-scale-codec",
  "scale-info",
  "sp-core 39.0.0",
@@ -6414,8 +6415,8 @@ dependencies = [
  "frame-support 45.0.0",
  "frame-system 45.0.0",
  "pallet-escrow",
- "pallet-stardust-ipfs",
  "pallet-storage-lifecycle",
+ "pallet-storage-service",
  "pallet-trading-common",
  "parity-scale-codec",
  "scale-info",
@@ -6610,9 +6611,10 @@ dependencies = [
  "frame-support 45.0.0",
  "frame-system 45.0.0",
  "media-utils",
+ "pallet-balances",
  "pallet-chat-common",
  "pallet-chat-permission",
- "pallet-stardust-ipfs",
+ "pallet-storage-service",
  "pallet-timestamp",
  "pallet-trading-common",
  "parity-scale-codec",
@@ -6702,8 +6704,9 @@ dependencies = [
  "frame-system 45.0.0",
  "pallet-balances",
  "pallet-divination-common",
- "pallet-stardust-ipfs",
+ "pallet-storage-service",
  "pallet-timestamp",
+ "pallet-trading-common",
  "parity-scale-codec",
  "scale-info",
  "sp-core 39.0.0",
@@ -6736,9 +6739,30 @@ dependencies = [
  "frame-system 45.0.0",
  "pallet-affiliate",
  "pallet-balances",
+ "pallet-chat-permission",
  "pallet-divination-common",
- "pallet-stardust-ipfs",
  "pallet-storage-lifecycle",
+ "pallet-storage-service",
+ "pallet-timestamp",
+ "pallet-trading-common",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 39.0.0",
+ "sp-io 44.0.0",
+ "sp-runtime 45.0.0",
+ "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pallet-divination-membership"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking 45.0.0",
+ "frame-support 45.0.0",
+ "frame-system 45.0.0",
+ "log",
+ "pallet-affiliate",
+ "pallet-balances",
  "pallet-timestamp",
  "pallet-trading-common",
  "parity-scale-codec",
@@ -6758,7 +6782,7 @@ dependencies = [
  "frame-system 45.0.0",
  "pallet-balances",
  "pallet-divination-common",
- "pallet-stardust-ipfs",
+ "pallet-storage-service",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
@@ -6777,7 +6801,7 @@ dependencies = [
  "hex",
  "log",
  "pallet-divination-common",
- "pallet-stardust-ipfs",
+ "pallet-storage-service",
  "pallet-tee-privacy",
  "parity-scale-codec",
  "scale-info",
@@ -6828,7 +6852,7 @@ dependencies = [
  "frame-system 45.0.0",
  "log",
  "media-utils",
- "pallet-stardust-ipfs",
+ "pallet-storage-service",
  "parity-scale-codec",
  "scale-info",
  "sp-core 39.0.0",
@@ -6911,6 +6935,129 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-matchmaking-common"
+version = "0.1.0"
+dependencies = [
+ "frame-support 45.0.0",
+ "frame-system 45.0.0",
+ "pallet-bazi-chart",
+ "pallet-divination-common",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 39.0.0",
+ "sp-io 44.0.0",
+ "sp-runtime 45.0.0",
+ "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pallet-matchmaking-interaction"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking 45.0.0",
+ "frame-support 45.0.0",
+ "frame-system 45.0.0",
+ "log",
+ "pallet-balances",
+ "pallet-matchmaking-common",
+ "pallet-matchmaking-profile",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 39.0.0",
+ "sp-io 44.0.0",
+ "sp-runtime 45.0.0",
+ "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pallet-matchmaking-matching"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking 45.0.0",
+ "frame-support 45.0.0",
+ "frame-system 45.0.0",
+ "log",
+ "pallet-balances",
+ "pallet-bazi-chart",
+ "pallet-matchmaking-common",
+ "pallet-matchmaking-profile",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 39.0.0",
+ "sp-io 44.0.0",
+ "sp-runtime 45.0.0",
+ "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pallet-matchmaking-membership"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking 45.0.0",
+ "frame-support 45.0.0",
+ "frame-system 45.0.0",
+ "log",
+ "pallet-affiliate",
+ "pallet-balances",
+ "pallet-matchmaking-common",
+ "pallet-matchmaking-profile",
+ "pallet-timestamp",
+ "pallet-trading-common",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 39.0.0",
+ "sp-io 44.0.0",
+ "sp-runtime 45.0.0",
+ "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pallet-matchmaking-profile"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking 45.0.0",
+ "frame-support 45.0.0",
+ "frame-system 45.0.0",
+ "log",
+ "pallet-affiliate",
+ "pallet-balances",
+ "pallet-divination-privacy",
+ "pallet-matchmaking-common",
+ "pallet-storage-service",
+ "pallet-timestamp",
+ "pallet-trading-common",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 39.0.0",
+ "sp-io 44.0.0",
+ "sp-runtime 45.0.0",
+ "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pallet-matchmaking-recommendation"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking 45.0.0",
+ "frame-support 45.0.0",
+ "frame-system 45.0.0",
+ "log",
+ "pallet-balances",
+ "pallet-matchmaking-common",
+ "pallet-matchmaking-matching",
+ "pallet-matchmaking-profile",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 39.0.0",
+ "sp-io 44.0.0",
+ "sp-runtime 45.0.0",
+ "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "pallet-meihua"
 version = "0.1.0"
 dependencies = [
@@ -6922,24 +7069,6 @@ dependencies = [
  "pallet-divination-common",
  "pallet-divination-ocw-tee",
  "pallet-divination-privacy",
- "pallet-timestamp",
- "parity-scale-codec",
- "scale-info",
- "sp-core 39.0.0",
- "sp-io 44.0.0",
- "sp-runtime 45.0.0",
- "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "pallet-membership"
-version = "0.1.0"
-dependencies = [
- "frame-benchmarking 45.0.0",
- "frame-support 45.0.0",
- "frame-system 45.0.0",
- "log",
- "pallet-balances",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
@@ -7084,26 +7213,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-stardust-ipfs"
-version = "0.1.0"
-dependencies = [
- "frame-support 45.0.0",
- "frame-system 45.0.0",
- "hex",
- "pallet-balances",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "serde_json",
- "sp-application-crypto 44.0.0",
- "sp-core 39.0.0",
- "sp-io 44.0.0",
- "sp-offchain 40.0.0",
- "sp-runtime 45.0.0",
- "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "pallet-storage-lifecycle"
 version = "0.1.0"
 dependencies = [
@@ -7114,6 +7223,28 @@ dependencies = [
  "scale-info",
  "sp-core 39.0.0",
  "sp-io 44.0.0",
+ "sp-runtime 45.0.0",
+ "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pallet-storage-service"
+version = "0.1.0"
+dependencies = [
+ "frame-support 45.0.0",
+ "frame-system 45.0.0",
+ "hex",
+ "pallet-balances",
+ "pallet-trading-common",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "serde_json",
+ "sp-api 40.0.0",
+ "sp-application-crypto 44.0.0",
+ "sp-core 39.0.0",
+ "sp-io 44.0.0",
+ "sp-offchain 40.0.0",
  "sp-runtime 45.0.0",
  "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -7233,7 +7364,7 @@ dependencies = [
  "frame-benchmarking 45.0.0",
  "frame-support 45.0.0",
  "frame-system 45.0.0",
- "pallet-stardust-ipfs",
+ "pallet-storage-service",
  "pallet-timestamp",
  "pallet-trading-common",
  "pallet-trading-credit",
@@ -7255,8 +7386,8 @@ dependencies = [
  "pallet-arbitration",
  "pallet-chat-permission",
  "pallet-escrow",
- "pallet-stardust-ipfs",
  "pallet-storage-lifecycle",
+ "pallet-storage-service",
  "pallet-timestamp",
  "pallet-trading-common",
  "pallet-trading-credit",
@@ -7295,8 +7426,8 @@ dependencies = [
  "frame-system 45.0.0",
  "pallet-arbitration",
  "pallet-escrow",
- "pallet-stardust-ipfs",
  "pallet-storage-lifecycle",
+ "pallet-storage-service",
  "pallet-timestamp",
  "pallet-trading-common",
  "parity-scale-codec",
@@ -11158,6 +11289,7 @@ dependencies = [
  "pallet-divination-ai",
  "pallet-divination-common",
  "pallet-divination-market",
+ "pallet-divination-membership",
  "pallet-divination-nft",
  "pallet-divination-privacy",
  "pallet-escrow",
@@ -11165,12 +11297,15 @@ dependencies = [
  "pallet-grandpa",
  "pallet-liuyao",
  "pallet-livestream",
+ "pallet-matchmaking-common",
+ "pallet-matchmaking-membership",
+ "pallet-matchmaking-profile",
  "pallet-meihua",
- "pallet-membership 45.0.0",
+ "pallet-membership",
  "pallet-qimen",
  "pallet-referral",
- "pallet-stardust-ipfs",
  "pallet-storage-lifecycle",
+ "pallet-storage-service",
  "pallet-sudo",
  "pallet-tarot",
  "pallet-tee-privacy",

@@ -20,6 +20,8 @@ import { CountdownTimer } from '@/features/trading/components';
 import { OrderState } from '@/stores/trading.store';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { PageHeader } from '@/components/PageHeader';
+import { Card, Button, LoadingSpinner } from '@/components/common';
+import { useAsync } from '@/hooks';
 
 export default function OrderDetailPage() {
   const router = useRouter();
@@ -33,6 +35,7 @@ export default function OrderDetailPage() {
     subscribeToOrder,
   } = useTradingStore();
 
+  const { execute, isLoading } = useAsync();
   const [unsubscribe, setUnsubscribe] = useState<(() => void) | null>(null);
 
   useEffect(() => {
@@ -79,7 +82,9 @@ export default function OrderDetailPage() {
           text: '确认',
           onPress: async () => {
             try {
-              await markPaid(currentOrder.id);
+              await execute(async () => {
+                await markPaid(currentOrder.id);
+              });
               Alert.alert('成功', '已标记为已付款，等待做市商确认');
             } catch (error) {
               Alert.alert('错误', '操作失败，请重试');
@@ -103,7 +108,9 @@ export default function OrderDetailPage() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await cancelOrder(currentOrder.id);
+              await execute(async () => {
+                await cancelOrder(currentOrder.id);
+              });
               Alert.alert('成功', '订单已取消', [
                 { text: '确定', onPress: () => router.back() },
               ]);
@@ -120,9 +127,7 @@ export default function OrderDetailPage() {
     return (
       <View style={styles.wrapper}>
         <PageHeader title="订单详情" />
-        <View style={styles.loading}>
-          <Text>加载中...</Text>
-        </View>
+        <LoadingSpinner text="加载订单信息..." />
         <BottomNavBar activeTab="profile" />
       </View>
     );
@@ -136,20 +141,20 @@ export default function OrderDetailPage() {
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       {/* 倒计时 */}
       <View style={styles.section}>
-        <View style={styles.timerCard}>
+        <Card style={styles.timerCard}>
           <Text style={styles.timerLabel}>请在以下时间内完成付款</Text>
           <CountdownTimer
             expireAt={currentOrder.expireAt}
             onExpire={() => Alert.alert('提示', '订单已超时')}
             style={styles.timer}
           />
-        </View>
+        </Card>
       </View>
 
       {/* 订单信息 */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>订单信息</Text>
-        <View style={styles.infoCard}>
+        <Card style={styles.infoCard}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>订单号</Text>
             <Text style={styles.infoValue}>#{currentOrder.id}</Text>
@@ -178,13 +183,13 @@ export default function OrderDetailPage() {
               {(Number(currentOrder.price) / 1_000_000).toFixed(6)} USDT
             </Text>
           </View>
-        </View>
+        </Card>
       </View>
 
       {/* 收款信息 */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>收款信息</Text>
-        <View style={styles.paymentCard}>
+        <Card style={styles.paymentCard}>
           <Text style={styles.paymentLabel}>收款地址 (TRC20)</Text>
           <View style={styles.addressContainer}>
             <Text style={styles.address} numberOfLines={1}>
@@ -197,34 +202,35 @@ export default function OrderDetailPage() {
               <Text style={styles.copyButtonText}>复制</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Card>
       </View>
 
       {/* 付款提示 */}
       <View style={styles.section}>
-        <View style={styles.warningCard}>
+        <Card style={styles.warningCard}>
           <Text style={styles.warningTitle}>⚠️ 付款提示</Text>
           <Text style={styles.warningText}>• 请使用 TRC20 网络转账</Text>
           <Text style={styles.warningText}>• 金额必须精确匹配</Text>
           <Text style={styles.warningText}>• 超时未付款订单将自动取消</Text>
-        </View>
+        </Card>
       </View>
 
       {/* 操作按钮 */}
       <View style={styles.section}>
-        <TouchableOpacity
-          style={styles.paidButton}
+        <Button
+          title="我已付款"
           onPress={handleMarkPaid}
-        >
-          <Text style={styles.paidButtonText}>我已付款</Text>
-        </TouchableOpacity>
+          loading={isLoading}
+          style={styles.paidButton}
+        />
 
-        <TouchableOpacity
-          style={styles.cancelButton}
+        <Button
+          title="取消订单"
           onPress={handleCancelOrder}
-        >
-          <Text style={styles.cancelButtonText}>取消订单</Text>
-        </TouchableOpacity>
+          variant="outline"
+          loading={isLoading}
+          style={styles.cancelButton}
+        />
       </View>
     </ScrollView>
 
@@ -245,11 +251,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: 20,
   },
-  loading: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   section: {
     padding: 16,
   },
@@ -261,11 +262,9 @@ const styles = StyleSheet.create({
   },
   timerCard: {
     backgroundColor: '#FFF9F0',
-    borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
     borderWidth: 2,
     borderColor: '#FF9500',
+    alignItems: 'center',
   },
   timerLabel: {
     fontSize: 14,
@@ -276,8 +275,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   infoCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
     padding: 16,
   },
   infoRow: {
@@ -300,8 +297,6 @@ const styles = StyleSheet.create({
     color: '#FF9500',
   },
   paymentCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
     padding: 16,
   },
   paymentLabel: {
@@ -336,8 +331,6 @@ const styles = StyleSheet.create({
   },
   warningCard: {
     backgroundColor: '#FFF3F3',
-    borderRadius: 12,
-    padding: 16,
     borderWidth: 1,
     borderColor: '#FFE0E0',
   },
@@ -353,28 +346,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   paidButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
     marginBottom: 12,
   },
-  paidButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  cancelButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF3B30',
-  },
+  cancelButton: {},
 });

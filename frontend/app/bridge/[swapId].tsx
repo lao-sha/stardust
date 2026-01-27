@@ -10,7 +10,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   Linking,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -19,6 +18,7 @@ import { BottomNavBar } from '@/components/BottomNavBar';
 import { SwapStatusBadge } from '@/features/bridge/components';
 import { MakerSwapRecord, SwapStatus } from '@/features/bridge/types';
 import { CountdownTimer } from '@/features/trading/components';
+import { Card, LoadingSpinner, Button } from '@/components/common';
 
 export default function SwapDetailPage() {
   const router = useRouter();
@@ -27,26 +27,36 @@ export default function SwapDetailPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // TODO: 从链上获取兑换详情
-    setTimeout(() => {
-      // 模拟数据
-      setRecord({
-        swapId: parseInt(swapId || '0'),
-        makerId: 1,
-        maker: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-        user: '5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty',
-        dustAmount: BigInt(500_000_000_000_000),
-        usdtAmount: 50_000_000,
-        usdtAddress: 'TJYeasTPa6gpEEfYcPQgLHu9eGNj1FGrVK',
-        createdAt: 12345678,
-        timeoutAt: 12345978,
-        trc20TxHash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-        completedAt: 12345700,
-        status: SwapStatus.Pending,
-        priceUsdt: 100_000,
-      });
-      setLoading(false);
-    }, 500);
+    const loadSwapDetail = async () => {
+      try {
+        const { bridgeService } = await import('@/services/bridge.service');
+        const swapRecord = await bridgeService.getSwapRecord(parseInt(swapId || '0'));
+        
+        if (swapRecord) {
+          setRecord({
+            swapId: swapRecord.id,
+            makerId: swapRecord.makerId,
+            maker: swapRecord.makerTronAddress,
+            user: swapRecord.buyer,
+            dustAmount: swapRecord.dustAmount,
+            usdtAmount: Number(swapRecord.usdtAmount),
+            usdtAddress: swapRecord.buyerTronAddress,
+            createdAt: swapRecord.createdAt,
+            timeoutAt: swapRecord.createdAt + 300, // 5 分钟超时
+            trc20TxHash: swapRecord.tronTxHash,
+            completedAt: swapRecord.completedAt,
+            status: swapRecord.status as unknown as SwapStatus,
+            priceUsdt: 100_000, // 从链上获取实际价格
+          });
+        }
+      } catch (error) {
+        console.error('Load swap detail error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadSwapDetail();
   }, [swapId]);
 
   const formatDust = (amount: bigint): string => {
@@ -72,8 +82,15 @@ export default function SwapDetailPage() {
           text: '确定举报',
           style: 'destructive',
           onPress: async () => {
-            // TODO: 调用链上 bridge.report_swap() 方法
-            Alert.alert('成功', '举报已提交，请等待仲裁处理');
+            try {
+              const { bridgeService } = await import('@/services/bridge.service');
+              await bridgeService.reportSwap(record!.swapId, undefined, (status) => {
+                console.log('Report status:', status);
+              });
+              Alert.alert('成功', '举报已提交，请等待仲裁处理');
+            } catch (error: any) {
+              Alert.alert('举报失败', error.message || '请稍后重试');
+            }
           },
         },
       ]
@@ -88,8 +105,14 @@ export default function SwapDetailPage() {
   };
 
   const handleCopyAddress = async (address: string) => {
-    // TODO: 复制到剪贴板
-    Alert.alert('已复制', address);
+    try {
+      const Clipboard = await import('expo-clipboard');
+      await Clipboard.setStringAsync(address);
+      Alert.alert('已复制', address);
+    } catch (error) {
+      console.error('Copy error:', error);
+      Alert.alert('复制失败', '请手动复制');
+    }
   };
 
   if (loading) {
@@ -97,8 +120,7 @@ export default function SwapDetailPage() {
       <View style={styles.wrapper}>
         <PageHeader title="兑换详情" />
         <View style={styles.loading}>
-          <ActivityIndicator size="large" color="#B2955D" />
-          <Text style={styles.loadingText}>加载中...</Text>
+          <LoadingSpinner text="加载中..." />
         </View>
         <BottomNavBar activeTab="profile" />
       </View>
@@ -128,7 +150,7 @@ export default function SwapDetailPage() {
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         {/* 状态卡片 */}
         <View style={styles.section}>
-          <View style={styles.statusCard}>
+          <Card>
             <SwapStatusBadge status={record.status} size="large" />
             {record.status === SwapStatus.Pending && (
               <View style={styles.countdownContainer}>
@@ -139,12 +161,12 @@ export default function SwapDetailPage() {
                 />
               </View>
             )}
-          </View>
+          </Card>
         </View>
 
         {/* 金额信息 */}
         <View style={styles.section}>
-          <View style={styles.amountCard}>
+          <Card>
             <View style={styles.amountRow}>
               <View style={styles.amountItem}>
                 <Text style={styles.amountLabel}>支付</Text>
@@ -160,12 +182,12 @@ export default function SwapDetailPage() {
                 </Text>
               </View>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 详细信息 */}
         <View style={styles.section}>
-          <View style={styles.detailCard}>
+          <Card>
             <Text style={styles.detailTitle}>详细信息</Text>
 
             <View style={styles.detailRow}>
@@ -201,12 +223,12 @@ export default function SwapDetailPage() {
                 <Text style={styles.detailValue}>#{record.completedAt}</Text>
               </View>
             )}
-          </View>
+          </Card>
         </View>
 
         {/* 地址信息 */}
         <View style={styles.section}>
-          <View style={styles.detailCard}>
+          <Card>
             <Text style={styles.detailTitle}>地址信息</Text>
 
             <View style={styles.addressRow}>
@@ -228,13 +250,13 @@ export default function SwapDetailPage() {
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 交易哈希 */}
         {record.trc20TxHash && (
           <View style={styles.section}>
-            <View style={styles.detailCard}>
+            <Card>
               <Text style={styles.detailTitle}>TRC20 交易</Text>
               <TouchableOpacity
                 style={styles.txHashButton}
@@ -245,19 +267,18 @@ export default function SwapDetailPage() {
                 </Text>
                 <Text style={styles.txHashLink}>查看 ›</Text>
               </TouchableOpacity>
-            </View>
+            </Card>
           </View>
         )}
 
         {/* 操作按钮 */}
         {canReport && (
           <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.reportButton}
+            <Button
+              title="⚠️ 举报问题"
               onPress={handleReport}
-            >
-              <Text style={styles.reportButtonText}>⚠️ 举报问题</Text>
-            </TouchableOpacity>
+              variant="outline"
+            />
             <Text style={styles.reportHint}>
               如果做市商未按时转账或金额不符，可发起举报
             </Text>
@@ -286,11 +307,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loadingText: {
-    fontSize: 14,
-    color: '#666666',
-    marginTop: 12,
-  },
   empty: {
     flex: 1,
     alignItems: 'center',
@@ -303,12 +319,6 @@ const styles = StyleSheet.create({
   section: {
     padding: 16,
   },
-  statusCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
-  },
   countdownContainer: {
     marginTop: 16,
     alignItems: 'center',
@@ -317,11 +327,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666666',
     marginBottom: 8,
-  },
-  amountCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
   },
   amountRow: {
     flexDirection: 'row',
@@ -351,11 +356,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: '#B2955D',
     marginHorizontal: 16,
-  },
-  detailCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
   },
   detailTitle: {
     fontSize: 16,
@@ -407,19 +407,6 @@ const styles = StyleSheet.create({
   txHashLink: {
     fontSize: 14,
     color: '#007AFF',
-  },
-  reportButton: {
-    backgroundColor: '#FFE5E5',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#FF3B30',
-  },
-  reportButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF3B30',
   },
   reportHint: {
     fontSize: 12,

@@ -25,7 +25,7 @@ members = [
     "pallets/divination/membership",
     "pallets/divination/tee-privacy",
     "pallets/divination/ocw-tee",
-    "pallets/divination/affiliate",
+    "pallets/affiliate",
     "pallets/chat/common",
     "pallets/chat/permission",
     "pallets/chat/core",
@@ -40,10 +40,16 @@ members = [
     "pallets/trading/otc",
     "pallets/escrow",
     "pallets/referral",
-    "pallets/stardust-ipfs",
+    "pallets/storage-service",
     "pallets/evidence",
     "pallets/arbitration",
     "pallets/storage-lifecycle",
+    "pallets/matchmaking/common",
+    "pallets/matchmaking/profile",
+    "pallets/matchmaking/matching",
+    "pallets/matchmaking/recommendation",
+    "pallets/matchmaking/interaction",
+    "pallets/matchmaking/membership",
     "media-utils",
     "runtime",
 ]
@@ -54,7 +60,7 @@ solochain-template-runtime = { path = "./runtime", default-features = false }
 # Divination pallets
 pallet-divination-common = { path = "./pallets/divination/common", default-features = false }
 pallet-divination-privacy = { path = "./pallets/divination/privacy", default-features = false }
-pallet-affiliate = { path = "./pallets/divination/affiliate", default-features = false }
+pallet-affiliate = { path = "./pallets/affiliate", default-features = false }
 pallet-almanac = { path = "./pallets/divination/almanac", default-features = false }
 pallet-divination-ai = { path = "./pallets/divination/ai", default-features = false }
 pallet-divination-market = { path = "./pallets/divination/market", default-features = false }
@@ -67,7 +73,7 @@ pallet-ziwei = { path = "./pallets/divination/ziwei", default-features = false }
 pallet-xiaoliuren = { path = "./pallets/divination/xiaoliuren", default-features = false }
 pallet-daliuren = { path = "./pallets/divination/daliuren", default-features = false }
 pallet-tarot = { path = "./pallets/divination/tarot", default-features = false }
-pallet-membership = { path = "./pallets/divination/membership", default-features = false }
+pallet-divination-membership = { path = "./pallets/divination/membership", default-features = false }
 pallet-tee-privacy = { path = "./pallets/divination/tee-privacy", default-features = false }
 pallet-divination-ocw-tee = { path = "./pallets/divination/ocw-tee", default-features = false }
 # Chat pallets
@@ -87,7 +93,7 @@ pallet-trading-otc = { path = "./pallets/trading/otc", default-features = false 
 # Escrow, Referral, IPFS pallets
 pallet-escrow = { path = "./pallets/escrow", default-features = false }
 pallet-referral = { path = "./pallets/referral", default-features = false }
-pallet-stardust-ipfs = { path = "./pallets/stardust-ipfs", default-features = false }
+pallet-storage-service = { path = "./pallets/storage-service", default-features = false }
 # Stardust common libraries
 media-utils = { path = "./media-utils", default-features = false }
 # Evidence pallet
@@ -96,6 +102,13 @@ pallet-evidence = { path = "./pallets/evidence", default-features = false }
 pallet-arbitration = { path = "./pallets/arbitration", default-features = false }
 # Storage lifecycle pallet
 pallet-storage-lifecycle = { path = "./pallets/storage-lifecycle", default-features = false }
+# Matchmaking pallets
+pallet-matchmaking-common = { path = "./pallets/matchmaking/common", default-features = false }
+pallet-matchmaking-profile = { path = "./pallets/matchmaking/profile", default-features = false }
+pallet-matchmaking-matching = { path = "./pallets/matchmaking/matching", default-features = false }
+pallet-matchmaking-recommendation = { path = "./pallets/matchmaking/recommendation", default-features = false }
+pallet-matchmaking-interaction = { path = "./pallets/matchmaking/interaction", default-features = false }
+pallet-matchmaking-membership = { path = "./pallets/matchmaking/membership", default-features = false }
 # Additional dependencies
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
 sp-application-crypto = { version = "44.0.0", default-features = false }

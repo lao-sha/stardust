@@ -12,13 +12,17 @@
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 use codec::{Decode, Encode};
 use frame_support::{
     dispatch::DispatchResult,
     pallet_prelude::*,
-    traits::{Get, Randomness, UnixTime},
+    traits::{Get, Randomness, UnixTime, Currency, ReservableCurrency, ExistenceRequirement},
     PalletId,
 };
+use sp_runtime::traits::{Saturating, Zero};
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_runtime::{
@@ -26,92 +30,15 @@ use sp_runtime::{
 };
 use sp_std::vec::Vec;
 
+// 使用 chat-common 的共享类型
+pub use pallet_chat_common::{MessageType, EncryptionMode};
+
 // 函数级中文注释：导入共享媒体工具库用于媒体验证和哈希计算
 use media_utils::{
     ImageValidator, VideoValidator, AudioValidator, MediaError
 };
 
-/// 加密模式枚举
-#[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
-#[codec(mel_bound())]
-pub enum EncryptionMode {
-    /// 军用级（量子抗性）
-    Military,
-    /// 商用级（标准加密）
-    Business,
-    /// 选择性（用户自主选择）
-    Selective,
-    /// 透明公开（无加密）
-    Transparent,
-}
-
-impl Default for EncryptionMode {
-    fn default() -> Self {
-        Self::Business
-    }
-}
-
-impl EncryptionMode {
-    /// 从u8代码转换为EncryptionMode枚举
-    pub fn from_u8(code: u8) -> Self {
-        match code {
-            0 => EncryptionMode::Military,
-            1 => EncryptionMode::Business,
-            2 => EncryptionMode::Selective,
-            3 => EncryptionMode::Transparent,
-            _ => EncryptionMode::Business,
-        }
-    }
-
-    /// 转换为u8代码
-    pub fn to_u8(&self) -> u8 {
-        match self {
-            EncryptionMode::Military => 0,
-            EncryptionMode::Business => 1,
-            EncryptionMode::Selective => 2,
-            EncryptionMode::Transparent => 3,
-        }
-    }
-}
-
-/// 消息类型枚举
-#[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
-#[codec(mel_bound())]
-pub enum MessageType {
-    Text,
-    Image,
-    File,
-    Voice,
-}
-
-impl Default for MessageType {
-    fn default() -> Self {
-        Self::Text
-    }
-}
-
-impl MessageType {
-    /// 从u8代码转换为MessageType枚举
-    pub fn from_u8(code: u8) -> Self {
-        match code {
-            0 => MessageType::Text,
-            1 => MessageType::Image,
-            2 => MessageType::File,
-            3 => MessageType::Voice,
-            _ => MessageType::Text,
-        }
-    }
-
-    /// 转换为u8代码
-    pub fn to_u8(&self) -> u8 {
-        match self {
-            MessageType::Text => 0,
-            MessageType::Image => 1,
-            MessageType::File => 2,
-            MessageType::Voice => 3,
-        }
-    }
-}
+// MessageType 和 EncryptionMode 已移至 pallet-chat-common，通过 pub use 重新导出
 
 /// 群组成员角色
 #[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
@@ -157,6 +84,9 @@ pub struct GroupMember<AccountId> {
 pub mod pallet {
     use super::*;
 
+    /// 余额类型别名
+    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
     /// Pallet配置trait
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -165,6 +95,9 @@ pub mod pallet {
 
         /// 时间服务（用于消息时间戳）
         type TimeProvider: UnixTime;
+
+        /// 货币类型（用于保证金）
+        type Currency: ReservableCurrency<Self::AccountId>;
 
         /// 群组名称最大长度
         #[pallet::constant]
@@ -210,27 +143,28 @@ pub mod pallet {
         #[pallet::constant]
         type GroupCreationCooldown: Get<BlockNumberFor<Self>>;
 
+        /// 创建群组保证金兜底值（DUST数量，pricing不可用时使用）
+        #[pallet::constant]
+        type GroupDeposit: Get<BalanceOf<Self>>;
+
+        /// 创建群组保证金USD价值（精度10^6，5_000_000 = 5 USDT）
+        #[pallet::constant]
+        type GroupDepositUsd: Get<u64>;
+
+        /// 保证金计算器（统一的 USD 价值动态计算）
+        type DepositCalculator: pallet_trading_common::DepositCalculator<BalanceOf<Self>>;
+
+        /// 国库账户（罚没资金转入）
+        type TreasuryAccount: Get<Self::AccountId>;
+
+        /// 治理权限来源（用于处理违规）
+        type GovernanceOrigin: frame_support::traits::EnsureOrigin<Self::RuntimeOrigin>;
+
         /// Weight信息（用于基准测试）
         type WeightInfo: WeightInfo;
     }
 
-    /// Weight info placeholder
-    pub trait WeightInfo {
-        fn create_group() -> Weight;
-        fn send_group_message() -> Weight;
-        fn join_group() -> Weight;
-        fn leave_group() -> Weight;
-        fn disband_group() -> Weight;
-    }
-
-    /// Default weight implementation
-    impl WeightInfo for () {
-        fn create_group() -> Weight { Weight::from_parts(10_000, 0) }
-        fn send_group_message() -> Weight { Weight::from_parts(10_000, 0) }
-        fn join_group() -> Weight { Weight::from_parts(10_000, 0) }
-        fn leave_group() -> Weight { Weight::from_parts(10_000, 0) }
-        fn disband_group() -> Weight { Weight::from_parts(10_000, 0) }
-    }
+    // WeightInfo trait 和实现已移至 weights.rs
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -290,6 +224,26 @@ pub mod pallet {
     #[pallet::getter(fn next_message_id)]
     pub type NextMessageId<T: Config> = StorageMap<_, Blake2_128Concat, u64, u64, ValueQuery>;
 
+    /// 存储项：群组保证金
+    #[pallet::storage]
+    #[pallet::getter(fn group_deposits)]
+    pub type GroupDeposits<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64, // group_id
+        BalanceOf<T>,
+    >;
+
+    /// 存储项：封禁群组列表
+    #[pallet::storage]
+    #[pallet::getter(fn banned_groups)]
+    pub type BannedGroups<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64, // group_id
+        u64, // 封禁时间戳
+    >;
+
     /// 事件定义
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -306,6 +260,47 @@ pub mod pallet {
         GroupEncryptionUpdated { group_id: u64, new_mode: u8 },
         /// 群组已解散 [群组ID]
         GroupDisbanded { group_id: u64 },
+        /// 群组保证金已锁定
+        GroupDepositLocked { group_id: u64, owner: T::AccountId, amount: BalanceOf<T> },
+        /// 群组保证金已释放
+        GroupDepositReleased { group_id: u64, owner: T::AccountId, amount: BalanceOf<T> },
+        /// 群组保证金已扣除
+        GroupDepositSlashed { group_id: u64, owner: T::AccountId, amount: BalanceOf<T>, reason: GroupViolationType },
+        /// 群组已被封禁
+        GroupBanned { group_id: u64, reason: GroupViolationType },
+    }
+
+    /// 群组违规类型
+    #[derive(Clone, Copy, Encode, Decode, codec::DecodeWithMemTracking, TypeInfo, MaxEncodedLen, PartialEq, Eq, RuntimeDebug)]
+    pub enum GroupViolationType {
+        /// 轻微违规（5%）- 广告、轻微骚扰
+        Minor,
+        /// 一般违规（10%）- 不当言论
+        Moderate,
+        /// 严重违规（20%）- 色情、暴力内容
+        Severe,
+        /// 特别严重（50%）- 诈骗、违法
+        Critical,
+        /// 永久封禁（100%）- 多次违规
+        PermanentBan,
+    }
+
+    impl GroupViolationType {
+        /// 获取扣除比例（基点，10000 = 100%）
+        pub fn slash_bps(&self) -> u16 {
+            match self {
+                GroupViolationType::Minor => 500,       // 5%
+                GroupViolationType::Moderate => 1000,   // 10%
+                GroupViolationType::Severe => 2000,     // 20%
+                GroupViolationType::Critical => 5000,   // 50%
+                GroupViolationType::PermanentBan => 10000, // 100%
+            }
+        }
+
+        /// 是否需要封禁群组
+        pub fn should_ban(&self) -> bool {
+            matches!(self, GroupViolationType::PermanentBan)
+        }
     }
 
     /// 错误定义
@@ -347,6 +342,12 @@ pub mod pallet {
         MediaFileTooSmall,
         /// 函数级中文注释：媒体验证错误 - 不支持的媒体类型
         UnsupportedMediaType,
+        /// 余额不足
+        InsufficientBalance,
+        /// 群组已被封禁
+        GroupBanned,
+        /// 保证金不存在
+        DepositNotFound,
     }
 
     #[pallet::call]
@@ -382,6 +383,11 @@ pub mod pallet {
                 Error::<T>::UserGroupLimitExceeded
             );
 
+            // 计算并锁定保证金（5 USDT 等值的 DUST）
+            let deposit = Self::calculate_deposit_amount();
+            T::Currency::reserve(&who, deposit)
+                .map_err(|_| Error::<T>::InsufficientBalance)?;
+
             // 生成唯一的10位数随机群组ID
             let group_id = Self::generate_unique_group_id()?;
 
@@ -405,6 +411,15 @@ pub mod pallet {
 
             // 存储群组信息
             Groups::<T>::insert(&group_id, &group_info);
+
+            // 记录保证金
+            GroupDeposits::<T>::insert(&group_id, deposit);
+
+            Self::deposit_event(Event::GroupDepositLocked {
+                group_id,
+                owner: who.clone(),
+                amount: deposit,
+            });
 
             // 添加创建者为群主
             let owner_member = GroupMember {
@@ -594,6 +609,113 @@ pub mod pallet {
 
             Self::do_disband_group(group_id)
         }
+
+        /// 处理群组违规（治理权限）
+        /// 
+        /// 根据违规类型扣除保证金并执行相应处罚
+        #[pallet::call_index(10)]
+        #[pallet::weight(Weight::from_parts(60_000_000, 0))]
+        pub fn handle_group_violation(
+            origin: OriginFor<T>,
+            group_id: u64,
+            violation_type: GroupViolationType,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+
+            // 验证群组存在
+            let group = Self::groups(&group_id).ok_or(Error::<T>::GroupNotFound)?;
+            let owner = group.owner.clone();
+
+            // 检查是否已被封禁
+            ensure!(!BannedGroups::<T>::contains_key(&group_id), Error::<T>::GroupBanned);
+
+            // 获取保证金
+            let deposit = GroupDeposits::<T>::get(&group_id)
+                .ok_or(Error::<T>::DepositNotFound)?;
+
+            // 计算扣除金额
+            let slash_bps = violation_type.slash_bps();
+            let slash_amount = deposit.saturating_mul(slash_bps.into()) / 10000u32.into();
+
+            if !slash_amount.is_zero() {
+                // 解除锁定
+                T::Currency::unreserve(&owner, slash_amount);
+                
+                // 转入国库
+                let treasury = T::TreasuryAccount::get();
+                let _ = T::Currency::transfer(
+                    &owner,
+                    &treasury,
+                    slash_amount,
+                    ExistenceRequirement::AllowDeath,
+                );
+
+                // 更新保证金记录
+                let remaining = deposit.saturating_sub(slash_amount);
+                if remaining.is_zero() {
+                    GroupDeposits::<T>::remove(&group_id);
+                } else {
+                    GroupDeposits::<T>::insert(&group_id, remaining);
+                }
+
+                Self::deposit_event(Event::GroupDepositSlashed {
+                    group_id,
+                    owner: owner.clone(),
+                    amount: slash_amount,
+                    reason: violation_type,
+                });
+            }
+
+            // 处理封禁
+            if violation_type.should_ban() {
+                let now = T::TimeProvider::now().as_secs();
+                BannedGroups::<T>::insert(&group_id, now);
+
+                Self::deposit_event(Event::GroupBanned {
+                    group_id,
+                    reason: violation_type,
+                });
+            }
+
+            Ok(())
+        }
+
+        /// 补充群组保证金
+        #[pallet::call_index(11)]
+        #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        pub fn top_up_group_deposit(
+            origin: OriginFor<T>,
+            group_id: u64,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 验证群组存在
+            let group = Self::groups(&group_id).ok_or(Error::<T>::GroupNotFound)?;
+
+            // 验证是群主
+            ensure!(group.owner == who, Error::<T>::NotGroupOwner);
+
+            // 检查是否已被封禁
+            ensure!(!BannedGroups::<T>::contains_key(&group_id), Error::<T>::GroupBanned);
+
+            // 锁定保证金
+            T::Currency::reserve(&who, amount)
+                .map_err(|_| Error::<T>::InsufficientBalance)?;
+
+            // 更新保证金记录
+            let current = GroupDeposits::<T>::get(&group_id).unwrap_or_else(Zero::zero);
+            let new_total = current.saturating_add(amount);
+            GroupDeposits::<T>::insert(&group_id, new_total);
+
+            Self::deposit_event(Event::GroupDepositLocked {
+                group_id,
+                owner: who,
+                amount,
+            });
+
+            Ok(())
+        }
     }
 
     // 内部函数
@@ -648,28 +770,42 @@ pub mod pallet {
 
         /// 解散群组的内部实现
         fn do_disband_group(group_id: u64) -> DispatchResult {
-            // 1. 收集所有成员账户
+            // 获取群组信息以获取群主
+            let group = Groups::<T>::get(&group_id).ok_or(Error::<T>::GroupNotFound)?;
+            let owner = group.owner.clone();
+
+            // 1. 释放保证金
+            if let Some(deposit) = GroupDeposits::<T>::take(&group_id) {
+                T::Currency::unreserve(&owner, deposit);
+                Self::deposit_event(Event::GroupDepositReleased {
+                    group_id,
+                    owner: owner.clone(),
+                    amount: deposit,
+                });
+            }
+
+            // 2. 收集所有成员账户
             let members: Vec<T::AccountId> = GroupMembers::<T>::iter_prefix(&group_id)
                 .map(|(account, _)| account)
                 .collect();
 
-            // 2. 从每个成员的群组列表中移除该群组
+            // 3. 从每个成员的群组列表中移除该群组
             for member in members.iter() {
                 UserGroups::<T>::mutate(member, |groups| {
                     groups.retain(|&g| g != group_id);
                 });
             }
 
-            // 3. 移除所有成员记录
+            // 4. 移除所有成员记录
             let _result = GroupMembers::<T>::clear_prefix(&group_id, u32::MAX, None);
 
-            // 4. 移除群组信息
+            // 5. 移除群组信息
             Groups::<T>::remove(&group_id);
 
-            // 5. 移除群组消息
+            // 6. 移除群组消息
             let _result = GroupMessages::<T>::clear_prefix(&group_id, u32::MAX, None);
 
-            // 6. 发出事件
+            // 7. 发出事件
             Self::deposit_event(Event::GroupDisbanded { group_id });
 
             Ok(())
@@ -695,8 +831,8 @@ pub mod pallet {
             message_type: &MessageType,
         ) -> Result<(), Error<T>> {
             match message_type {
-                MessageType::Text => {
-                    // 文本消息不需要媒体验证
+                MessageType::Text | MessageType::System | MessageType::AI => {
+                    // 文本/系统/AI消息不需要媒体验证
                     Ok(())
                 },
                 MessageType::Image => {
@@ -708,6 +844,12 @@ pub mod pallet {
                 MessageType::Voice => {
                     // 验证音频格式
                     AudioValidator::validate(content)
+                        .map(|_| ())
+                        .map_err(Self::convert_media_error)
+                },
+                MessageType::Video => {
+                    // 验证视频格式
+                    VideoValidator::validate(content)
                         .map(|_| ())
                         .map_err(Self::convert_media_error)
                 },
@@ -742,6 +884,17 @@ pub mod pallet {
                 MediaError::InvalidPngHeader => Error::<T>::InvalidMediaFormat,
                 _ => Error::<T>::InvalidMediaFormat,
             }
+        }
+
+        /// 计算保证金金额（5 USDT 等值的 DUST）
+        /// 
+        /// 使用统一的 DepositCalculator trait 计算
+        pub fn calculate_deposit_amount() -> BalanceOf<T> {
+            use pallet_trading_common::DepositCalculator;
+            T::DepositCalculator::calculate_deposit(
+                T::GroupDepositUsd::get(),
+                T::GroupDeposit::get(),
+            )
         }
     }
 }

@@ -327,15 +327,97 @@ export class DivinationService {
     return stats;
   }
 
+  // 本地删除记录存储键
+  private static readonly DELETED_RECORDS_KEY = 'stardust_deleted_divination_records';
+
   /**
    * 删除占卜记录（软删除，仅本地标记）
    * 注意：链上数据无法删除，此方法仅用于本地隐藏
    * @param recordId 记录ID
    */
   async markRecordAsDeleted(recordId: number): Promise<void> {
-    // TODO: 实现本地存储标记
-    // 可以使用 AsyncStorage 存储已删除的记录ID列表
-    console.log('标记记录为已删除:', recordId);
+    try {
+      const AsyncStorage = await this.getAsyncStorage();
+      const existingData = await AsyncStorage.getItem(DivinationService.DELETED_RECORDS_KEY);
+      const deletedIds: number[] = existingData ? JSON.parse(existingData) : [];
+      
+      if (!deletedIds.includes(recordId)) {
+        deletedIds.push(recordId);
+        await AsyncStorage.setItem(
+          DivinationService.DELETED_RECORDS_KEY,
+          JSON.stringify(deletedIds)
+        );
+      }
+      
+      console.log('标记记录为已删除:', recordId);
+    } catch (error) {
+      console.error('标记删除记录失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 检查记录是否已被标记为删除
+   * @param recordId 记录ID
+   */
+  async isRecordDeleted(recordId: number): Promise<boolean> {
+    try {
+      const AsyncStorage = await this.getAsyncStorage();
+      const existingData = await AsyncStorage.getItem(DivinationService.DELETED_RECORDS_KEY);
+      const deletedIds: number[] = existingData ? JSON.parse(existingData) : [];
+      return deletedIds.includes(recordId);
+    } catch (error) {
+      console.error('检查删除状态失败:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 获取所有已删除的记录ID
+   */
+  async getDeletedRecordIds(): Promise<number[]> {
+    try {
+      const AsyncStorage = await this.getAsyncStorage();
+      const existingData = await AsyncStorage.getItem(DivinationService.DELETED_RECORDS_KEY);
+      return existingData ? JSON.parse(existingData) : [];
+    } catch (error) {
+      console.error('获取删除记录列表失败:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 恢复已删除的记录
+   * @param recordId 记录ID
+   */
+  async restoreDeletedRecord(recordId: number): Promise<void> {
+    try {
+      const AsyncStorage = await this.getAsyncStorage();
+      const existingData = await AsyncStorage.getItem(DivinationService.DELETED_RECORDS_KEY);
+      const deletedIds: number[] = existingData ? JSON.parse(existingData) : [];
+      
+      const index = deletedIds.indexOf(recordId);
+      if (index > -1) {
+        deletedIds.splice(index, 1);
+        await AsyncStorage.setItem(
+          DivinationService.DELETED_RECORDS_KEY,
+          JSON.stringify(deletedIds)
+        );
+      }
+      
+      console.log('恢复已删除记录:', recordId);
+    } catch (error) {
+      console.error('恢复删除记录失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 动态导入 AsyncStorage（避免循环依赖）
+   */
+  private async getAsyncStorage() {
+    const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
+    return AsyncStorage;
   }
 
   /**

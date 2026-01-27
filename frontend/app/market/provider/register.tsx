@@ -18,6 +18,8 @@ import { useRouter } from 'expo-router';
 import { useWalletStore } from '@/stores/wallet.store';
 import { useProvider, useChainTransaction } from '@/divination/market/hooks';
 import { LoadingSpinner, TransactionStatus } from '@/divination/market/components';
+import { Card, Button, Input } from '@/components/common';
+import { useAsync, useWallet } from '@/hooks';
 import { THEME, SHADOWS } from '@/divination/market/theme';
 import {
   DIVINATION_TYPES,
@@ -37,6 +39,7 @@ export default function RegisterProviderScreen() {
   const { address, isLocked } = useWalletStore();
   const { isProvider, loading } = useProvider();
   const { registerProvider, txState, isProcessing, resetState } = useChainTransaction();
+  const { execute, isLoading: submitting } = useAsync();
   const [showTxStatus, setShowTxStatus] = useState(false);
 
   // 表单状态
@@ -95,7 +98,7 @@ export default function RegisterProviderScreen() {
     return valid;
   };
 
-  const handleSubmit = async () => {
+  handleSubmit = async () => {
     if (!address || isLocked) {
       Alert.alert('提示', '请先解锁钱包');
       return;
@@ -109,10 +112,9 @@ export default function RegisterProviderScreen() {
 
     if (!validateForm()) return;
 
-    setSubmitting(true);
     setShowTxStatus(true);
 
-    try {
+    await execute(async () => {
       // 调用链上交易
       const result = await registerProvider(
         {
@@ -140,11 +142,7 @@ export default function RegisterProviderScreen() {
         // 用户取消了交易
         setShowTxStatus(false);
       }
-    } catch (err) {
-      console.error('Register provider error:', err);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   const handleTxStatusClose = () => {
@@ -174,7 +172,7 @@ export default function RegisterProviderScreen() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* 基本信息 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>基本信息</Text>
 
           <View style={styles.inputGroup}>
@@ -206,10 +204,10 @@ export default function RegisterProviderScreen() {
             <Text style={styles.charCount}>{bio.length}/200</Text>
             {bioError && <Text style={styles.errorText}>{bioError}</Text>}
           </View>
-        </View>
+        </Card>
 
         {/* 擅长领域 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>擅长领域 *</Text>
           <Text style={styles.sectionDesc}>选择您擅长解答的问题类型</Text>
           <View style={styles.tagsContainer}>
@@ -247,10 +245,10 @@ export default function RegisterProviderScreen() {
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </Card>
 
         {/* 占卜类型 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>占卜类型 *</Text>
           <Text style={styles.sectionDesc}>选择您擅长的占卜术</Text>
           <View style={styles.tagsContainer}>
@@ -279,10 +277,10 @@ export default function RegisterProviderScreen() {
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </Card>
 
         {/* 其他设置 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>其他设置</Text>
 
           <View style={styles.switchRow}>
@@ -297,7 +295,7 @@ export default function RegisterProviderScreen() {
               thumbColor={acceptsUrgent ? THEME.primary : THEME.textTertiary}
             />
           </View>
-        </View>
+        </Card>
 
         {/* 提示 */}
         <View style={styles.notice}>
@@ -308,17 +306,12 @@ export default function RegisterProviderScreen() {
         </View>
 
         {/* 提交按钮 */}
-        <TouchableOpacity
-          style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+        <Button
+          title="提交申请"
           onPress={handleSubmit}
-          disabled={submitting}
-        >
-          {submitting ? (
-            <LoadingSpinner size="small" color={THEME.textInverse} />
-          ) : (
-            <Text style={styles.submitBtnText}>提交申请</Text>
-          )}
-        </TouchableOpacity>
+          loading={submitting}
+          disabled={!formValid || submitting}
+        />
 
         <View style={styles.bottomSpace} />
       </ScrollView>
@@ -357,9 +350,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   section: {
-    backgroundColor: THEME.card,
-    borderRadius: 12,
-    padding: 16,
     marginBottom: 16,
   },
   sectionTitle: {

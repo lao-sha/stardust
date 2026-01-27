@@ -7,6 +7,9 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
+    // TODO: 启用 noImplicitAny 以强制类型安全
+    // 当前仍有部分文件使用 any，需要逐步修复后启用
+    // "noImplicitAny": true,
     "paths": {
       "@/*": ["./src/*"]
     }

@@ -25,6 +25,8 @@ import {
   LoadingSpinner,
   TransactionStatus,
 } from '@/divination/market/components';
+import { Card, Button } from '@/components/common';
+import { useAsync } from '@/hooks';
 import { THEME, SHADOWS } from '@/divination/market/theme';
 import { Order, Provider } from '@/divination/market/types';
 import { getIpfsUrl } from '@/divination/market/services/ipfs.service';
@@ -66,10 +68,10 @@ export default function CreateReviewScreen() {
   const { getProvider } = useMarketApi();
   const { prepareSubmitReview, loading: reviewLoading } = useReviews();
   const { submitReview, txState, isProcessing, resetState } = useChainTransaction();
+  const { execute, isLoading } = useAsync();
 
   const [order, setOrder] = useState<Order | null>(null);
   const [provider, setProvider] = useState<Provider | null>(null);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showTxStatus, setShowTxStatus] = useState(false);
 
@@ -84,8 +86,7 @@ export default function CreateReviewScreen() {
   const loadData = useCallback(async () => {
     if (!orderId) return;
 
-    try {
-      setLoading(true);
+    await execute(async () => {
       const orderData = await getOrder(parseInt(orderId, 10));
       setOrder(orderData);
 
@@ -93,12 +94,8 @@ export default function CreateReviewScreen() {
         const providerData = await getProvider(orderData.provider);
         setProvider(providerData);
       }
-    } catch (err) {
-      console.error('Load data error:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [orderId, getOrder, getProvider]);
+    });
+  }, [orderId, getOrder, getProvider, execute]);
 
   useEffect(() => {
     loadData();
@@ -178,7 +175,7 @@ export default function CreateReviewScreen() {
     resetState();
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
         <LoadingSpinner text="加载中..." fullScreen />
@@ -219,7 +216,7 @@ export default function CreateReviewScreen() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* 解卦师信息 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <View style={styles.providerRow}>
             <Avatar
               uri={provider.avatarCid ? getIpfsUrl(provider.avatarCid) : undefined}
@@ -237,10 +234,10 @@ export default function CreateReviewScreen() {
               </View>
             </View>
           </View>
-        </View>
+        </Card>
 
         {/* 评分 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>服务评分</Text>
 
           <RatingItem
@@ -263,10 +260,10 @@ export default function CreateReviewScreen() {
             value={responseRating}
             onChange={setResponseRating}
           />
-        </View>
+        </Card>
 
         {/* 评价内容 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>评价内容（选填）</Text>
           <TextInput
             style={styles.textArea}
@@ -280,10 +277,10 @@ export default function CreateReviewScreen() {
             maxLength={500}
           />
           <Text style={styles.charCount}>{content.length}/500</Text>
-        </View>
+        </Card>
 
         {/* 匿名选项 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <View style={styles.anonymousRow}>
             <View style={styles.anonymousInfo}>
               <Text style={styles.anonymousLabel}>匿名评价</Text>
@@ -298,20 +295,15 @@ export default function CreateReviewScreen() {
               thumbColor={isAnonymous ? THEME.primary : THEME.textTertiary}
             />
           </View>
-        </View>
+        </Card>
 
         {/* 提交按钮 */}
-        <TouchableOpacity
-          style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+        <Button
+          title="提交评价"
           onPress={handleSubmit}
+          loading={submitting}
           disabled={submitting}
-        >
-          {submitting ? (
-            <LoadingSpinner size="small" color={THEME.textInverse} />
-          ) : (
-            <Text style={styles.submitBtnText}>提交评价</Text>
-          )}
-        </TouchableOpacity>
+        />
 
         <View style={styles.bottomSpace} />
       </ScrollView>
@@ -366,9 +358,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   section: {
-    backgroundColor: THEME.card,
-    borderRadius: 12,
-    padding: 16,
     marginBottom: 16,
   },
   sectionTitle: {

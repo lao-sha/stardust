@@ -20,6 +20,9 @@
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 pub mod algorithm;
 pub mod interpretation;
 pub mod runtime_api;
@@ -42,7 +45,7 @@ pub mod pallet {
         BoundedVec,
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::{SaturatedConversion, traits::Saturating};
+    use sp_runtime::traits::Saturating;
     use sp_std::prelude::*;
 
     // 导入押金相关类型

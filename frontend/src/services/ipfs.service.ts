@@ -303,6 +303,30 @@ export function getCidUrl(cid: string): string {
 }
 
 /**
+ * 上传图片文件到 IPFS
+ * @param imageUri 图片的本地 URI
+ * @returns IPFS CID
+ */
+export async function uploadImageToIpfs(imageUri: string): Promise<string> {
+  try {
+    // 读取图片文件
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    
+    // 转换为 Uint8Array
+    const arrayBuffer = await blob.arrayBuffer();
+    const content = new Uint8Array(arrayBuffer);
+    
+    // 上传到 IPFS
+    const cid = await uploadToIpfs(content);
+    return cid;
+  } catch (error) {
+    console.error('Upload image to IPFS failed:', error);
+    throw new Error(`图片上传失败: ${(error as Error).message}`);
+  }
+}
+
+/**
  * 延迟函数
  */
 function delay(ms: number): Promise<void> {

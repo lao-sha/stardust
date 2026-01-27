@@ -16,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import storage from '@/lib/storage';
 import { useWalletStore } from '@/stores/wallet.store';
+import { Card } from '@/components/common';
+import { useAsync } from '@/hooks';
 import { THEME, SHADOWS } from '@/divination/market/theme';
 
 const PRIVACY_SETTINGS_KEY = 'market_privacy_settings';
@@ -41,24 +43,20 @@ const DEFAULT_SETTINGS: PrivacySettings = {
 export default function PrivacySettingsScreen() {
   const router = useRouter();
   const { address } = useWalletStore();
+  const { execute, isLoading } = useAsync();
   const [settings, setSettings] = useState<PrivacySettings>(DEFAULT_SETTINGS);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadSettings();
   }, []);
 
   const loadSettings = async () => {
-    try {
+    await execute(async () => {
       const data = await storage.getItem(PRIVACY_SETTINGS_KEY);
       if (data) {
         setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(data) });
       }
-    } catch (err) {
-      console.error('Load privacy settings error:', err);
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   const saveSettings = async (newSettings: PrivacySettings) => {
@@ -142,7 +140,7 @@ export default function PrivacySettingsScreen() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* 数据加密 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>数据加密</Text>
           <Text style={styles.sectionDesc}>
             选择哪些内容需要端到端加密保护
@@ -183,10 +181,10 @@ export default function PrivacySettingsScreen() {
               thumbColor={settings.encryptReviews ? THEME.primary : THEME.textTertiary}
             />
           </View>
-        </View>
+        </Card>
 
         {/* 身份保护 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>身份保护</Text>
 
           <View style={styles.settingItem}>
@@ -206,10 +204,10 @@ export default function PrivacySettingsScreen() {
               thumbColor={settings.hideAddressInReview ? THEME.primary : THEME.textTertiary}
             />
           </View>
-        </View>
+        </Card>
 
         {/* 数据收集 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>数据收集</Text>
 
           <View style={styles.settingItem}>
@@ -247,10 +245,10 @@ export default function PrivacySettingsScreen() {
               thumbColor={settings.autoDeleteHistory ? THEME.primary : THEME.textTertiary}
             />
           </View>
-        </View>
+        </Card>
 
         {/* 数据管理 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>数据管理</Text>
 
           <TouchableOpacity style={styles.actionItem} onPress={handleClearHistory}>
@@ -268,10 +266,10 @@ export default function PrivacySettingsScreen() {
             </View>
             <Ionicons name="chevron-forward" size={20} color={THEME.textTertiary} />
           </TouchableOpacity>
-        </View>
+        </Card>
 
         {/* 危险操作 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={[styles.sectionTitle, { color: THEME.error }]}>
             危险操作
           </Text>
@@ -285,7 +283,7 @@ export default function PrivacySettingsScreen() {
             </View>
             <Ionicons name="chevron-forward" size={20} color={THEME.error} />
           </TouchableOpacity>
-        </View>
+        </Card>
 
         {/* 隐私说明 */}
         <View style={styles.notice}>
@@ -331,9 +329,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   section: {
-    backgroundColor: THEME.card,
-    borderRadius: 12,
-    padding: 16,
     marginBottom: 16,
   },
   sectionTitle: {

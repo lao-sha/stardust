@@ -40,6 +40,9 @@
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 mod algorithm;
 mod interpretation;
 mod interpretation_algorithm;
@@ -98,7 +101,7 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{Zero, Saturating};
-    use sp_runtime::SaturatedConversion;
+    
 
     // 导入押金相关类型
     pub use pallet_divination_common::deposit::{
@@ -1098,25 +1101,34 @@ pub mod pallet {
                 pallet_divination_privacy::types::PrivacyMode::Public |
                 pallet_divination_privacy::types::PrivacyMode::Partial => {
                     // Public/Partial 模式：计算所有数据
+                    // 安全检查：确保所有必需参数存在
+                    let year_gz_val = year_gz.ok_or(Error::<T>::InvalidGanZhi)?;
+                    let month_gz_val = month_gz.ok_or(Error::<T>::InvalidGanZhi)?;
+                    let day_gz_val = day_gz.ok_or(Error::<T>::InvalidGanZhi)?;
+                    let hour_gz_val = hour_gz.ok_or(Error::<T>::InvalidGanZhi)?;
+                    let yue_jiang_val = yue_jiang.ok_or(Error::<T>::InvalidYueJiang)?;
+                    let zhan_shi_val = zhan_shi.ok_or(Error::<T>::InvalidZhanShi)?;
+                    let is_day_val = is_day.ok_or(Error::<T>::InvalidPrivacyMode)?;
+                    
                     let year = (
-                        TianGan::from_index(year_gz.unwrap().0),
-                        DiZhi::from_index(year_gz.unwrap().1),
+                        TianGan::from_index(year_gz_val.0),
+                        DiZhi::from_index(year_gz_val.1),
                     );
                     let month = (
-                        TianGan::from_index(month_gz.unwrap().0),
-                        DiZhi::from_index(month_gz.unwrap().1),
+                        TianGan::from_index(month_gz_val.0),
+                        DiZhi::from_index(month_gz_val.1),
                     );
                     let day = (
-                        TianGan::from_index(day_gz.unwrap().0),
-                        DiZhi::from_index(day_gz.unwrap().1),
+                        TianGan::from_index(day_gz_val.0),
+                        DiZhi::from_index(day_gz_val.1),
                     );
                     let hour = (
-                        TianGan::from_index(hour_gz.unwrap().0),
-                        DiZhi::from_index(hour_gz.unwrap().1),
+                        TianGan::from_index(hour_gz_val.0),
+                        DiZhi::from_index(hour_gz_val.1),
                     );
-                    let yj = DiZhi::from_index(yue_jiang.unwrap());
-                    let zs = DiZhi::from_index(zhan_shi.unwrap());
-                    let is_d = is_day.unwrap();
+                    let yj = DiZhi::from_index(yue_jiang_val);
+                    let zs = DiZhi::from_index(zhan_shi_val);
+                    let is_d = is_day_val;
 
                     // 计算天盘
                     let tian_pan = calculate_tian_pan(yj, zs);

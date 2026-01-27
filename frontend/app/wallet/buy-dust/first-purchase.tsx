@@ -11,7 +11,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTradingStore } from '@/stores/trading.store';
@@ -21,6 +20,8 @@ import { UnlockWalletDialog } from '@/components/UnlockWalletDialog';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { PageHeader } from '@/components/PageHeader';
+import { Card, Button } from '@/components/common';
+import { useAsync } from '@/hooks';
 import { isWebEnvironment, isSignerUnlocked } from '@/lib/signer';
 
 const FIRST_PURCHASE_USD = 10;
@@ -38,6 +39,7 @@ export default function FirstPurchasePage() {
     createFirstPurchase,
   } = useTradingStore();
 
+  const { execute, isLoading } = useAsync();
   const [estimatedDust, setEstimatedDust] = useState<string>('0');
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
@@ -51,8 +53,9 @@ export default function FirstPurchasePage() {
   } | null>(null);
 
   useEffect(() => {
-    fetchMakers();
-    fetchDustPrice();
+    execute(async () => {
+      await Promise.all([fetchMakers(), fetchDustPrice()]);
+    });
   }, []);
 
   useEffect(() => {
@@ -180,19 +183,19 @@ export default function FirstPurchasePage() {
         {/* 购买金额 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>购买金额</Text>
-          <View style={styles.amountCard}>
+          <Card style={styles.amountCard}>
             <Text style={styles.amountValue}>{FIRST_PURCHASE_USD}.00 USD</Text>
             <Text style={styles.amountLabel}>(固定)</Text>
-          </View>
+          </Card>
         </View>
 
         {/* 预计获得 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>预计获得</Text>
-          <View style={styles.estimateCard}>
+          <Card style={styles.estimateCard}>
             <Text style={styles.estimateValue}>≈ {estimatedDust} DUST</Text>
             <Text style={styles.estimateLabel}>(含首购优惠)</Text>
-          </View>
+          </Card>
         </View>
 
         {/* 选择做市商 */}
@@ -210,27 +213,22 @@ export default function FirstPurchasePage() {
 
         {/* 首购说明 */}
         <View style={styles.section}>
-          <View style={styles.infoCard}>
+          <Card style={styles.infoCard}>
             <Text style={styles.infoTitle}>💡 首购说明</Text>
             <Text style={styles.infoText}>• 每个账户仅限一次首购</Text>
             <Text style={styles.infoText}>• 金额固定为 10 USD</Text>
             <Text style={styles.infoText}>• 完成首购后可进行普通交易</Text>
-          </View>
+          </Card>
         </View>
 
         {/* 创建订单按钮 */}
         <View style={styles.section}>
-          <TouchableOpacity
-            style={[styles.createButton, !selectedMaker && styles.createButtonDisabled]}
+          <Button
+            title="创建首购订单"
             onPress={handleCreateOrder}
-            disabled={!selectedMaker || loadingOrder}
-          >
-            {loadingOrder ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.createButtonText}>创建首购订单</Text>
-            )}
-          </TouchableOpacity>
+            loading={loadingOrder || isLoading}
+            disabled={!selectedMaker || loadingOrder || isLoading}
+          />
         </View>
       </ScrollView>
 
@@ -278,9 +276,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   amountCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
     alignItems: 'center',
   },
   amountValue: {
@@ -294,9 +289,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   estimateCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
     alignItems: 'center',
   },
   estimateValue: {
@@ -311,8 +303,6 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     backgroundColor: '#FFF9F0',
-    borderRadius: 12,
-    padding: 16,
   },
   infoTitle: {
     fontSize: 16,
@@ -324,19 +314,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666666',
     marginBottom: 6,
-  },
-  createButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  createButtonDisabled: {
-    backgroundColor: '#CCCCCC',
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

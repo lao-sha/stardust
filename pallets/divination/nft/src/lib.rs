@@ -39,6 +39,9 @@
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 pub mod types;
 
 #[cfg(test)]
@@ -73,7 +76,7 @@ pub mod pallet {
         type DivinationProvider: DivinationProvider<Self::AccountId>;
 
         /// IPFS 内容注册接口（用于自动 Pin NFT 媒体）
-        type ContentRegistry: pallet_stardust_ipfs::ContentRegistry;
+        type ContentRegistry: pallet_storage_service::ContentRegistry;
 
         /// 最大名称长度
         #[pallet::constant]
@@ -522,32 +525,32 @@ pub mod pallet {
 
             // 🆕 自动 Pin NFT 主图到 IPFS (Critical 层级 - 5副本)
             // NFT 主图是高价值数字资产，需要最高可靠性
-            <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+            <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                 b"divination-nft".to_vec(),
                 nft_id,
                 image_cid,
-                pallet_stardust_ipfs::PinTier::Critical,
+                pallet_storage_service::PinTier::Critical,
             )?;
 
             // 🆕 如果有描述，Pin 描述 (Standard 层级)
             if let Some(ref desc_cid) = description_cid {
                 // 描述 Pin 失败不影响主流程
-                let _ = <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+                let _ = <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                     b"divination-nft".to_vec(),
                     nft_id.saturating_add(1000000),
                     desc_cid.clone(),
-                    pallet_stardust_ipfs::PinTier::Standard,
+                    pallet_storage_service::PinTier::Standard,
                 ).ok();
             }
 
             // 🆕 如果有动画，Pin 动画 (Standard 层级)
             if let Some(ref anim_cid) = animation_cid {
                 // 动画 Pin 失败不影响主流程
-                let _ = <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+                let _ = <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                     b"divination-nft".to_vec(),
                     nft_id.saturating_add(2000000),
                     anim_cid.clone(),
-                    pallet_stardust_ipfs::PinTier::Standard,
+                    pallet_storage_service::PinTier::Standard,
                 ).ok();
             }
 
@@ -1097,22 +1100,22 @@ pub mod pallet {
             // 🆕 如果有描述，Pin 描述 (Temporary 层级)
             if let Some(ref desc_cid) = description_cid {
                 // 描述 Pin 失败不影响主流程
-                let _ = <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+                let _ = <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                     b"divination-nft".to_vec(),
                     (collection_id as u64).saturating_add(3000000),
                     desc_cid.clone(),
-                    pallet_stardust_ipfs::PinTier::Temporary,
+                    pallet_storage_service::PinTier::Temporary,
                 ).ok();
             }
 
             // 🆕 如果有封面，Pin 封面 (Standard 层级)
             if let Some(ref cover) = cover_cid {
                 // 封面 Pin 失败不影响主流程
-                let _ = <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+                let _ = <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                     b"divination-nft".to_vec(),
                     (collection_id as u64).saturating_add(4000000),
                     cover.clone(),
-                    pallet_stardust_ipfs::PinTier::Standard,
+                    pallet_storage_service::PinTier::Standard,
                 ).ok();
             }
 

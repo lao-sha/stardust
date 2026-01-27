@@ -2,7 +2,6 @@
 //!
 //! 提供 TRON 地址验证
 
-use sp_std::prelude::*;
 
 /// 函数级详细中文注释：验证 TRON 地址格式
 ///
@@ -48,7 +47,7 @@ mod tests {
     #[test]
     fn test_is_valid_tron_address() {
         assert!(is_valid_tron_address(b"TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS"));
-        assert!(!is_valid_tron_address(b"TYASR5UV6HEcXatwdFQfmLVUqQQQMUxHLS")); // 长度不对
+        assert!(!is_valid_tron_address(b"TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHL")); // 长度不对（33字符）
         assert!(!is_valid_tron_address(b"AYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS")); // 不是T开头
         assert!(!is_valid_tron_address(b"TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHL0")); // 包含0（非Base58）
     }

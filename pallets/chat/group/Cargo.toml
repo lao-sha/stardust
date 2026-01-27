@@ -27,7 +27,7 @@ sp-core = { workspace = true }
 # 本地依赖
 pallet-chat-common = { path = "../common", default-features = false }
 pallet-chat-permission = { path = "../permission", default-features = false }
-pallet-stardust-ipfs = { path = "../../stardust-ipfs", default-features = false }
+pallet-storage-service = { path = "../../storage-service", default-features = false }
 pallet-trading-common = { path = "../../trading/common", default-features = false }
 media-utils = { path = "../../../media-utils", default-features = false }
 
@@ -36,6 +36,7 @@ sp-core = { workspace = true }
 sp-io = { workspace = true }
 sp-runtime = { workspace = true }
 pallet-timestamp = { workspace = true }
+pallet-balances = { workspace = true }
 
 [features]
 default = ["std"]
@@ -51,7 +52,7 @@ std = [
     "sp-core/std",
     "pallet-chat-common/std",
     "pallet-chat-permission/std",
-    "pallet-stardust-ipfs/std",
+    "pallet-storage-service/std",
     "pallet-trading-common/std",
     "media-utils/std",
 ]

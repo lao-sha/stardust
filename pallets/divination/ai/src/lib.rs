@@ -38,6 +38,9 @@
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 pub mod types;
 
 #[cfg(test)]
@@ -71,7 +74,7 @@ pub mod pallet {
         type DivinationProvider: DivinationProvider<Self::AccountId>;
 
         /// IPFS 内容注册接口（用于自动 Pin AI 解读内容）
-        type ContentRegistry: pallet_stardust_ipfs::ContentRegistry;
+        type ContentRegistry: pallet_storage_service::ContentRegistry;
 
         /// 基础解读费用
         #[pallet::constant]
@@ -81,9 +84,16 @@ pub mod pallet {
         #[pallet::constant]
         type MinOracleStake: Get<BalanceOf<Self>>;
 
-        /// 争议押金
+        /// 争议押金兜底值（DUST数量，pricing不可用时使用）
         #[pallet::constant]
         type DisputeDeposit: Get<BalanceOf<Self>>;
+
+        /// 争议押金USD价值（精度10^6，1_000_000 = 1 USDT）
+        #[pallet::constant]
+        type DisputeDepositUsd: Get<u64>;
+
+        /// 保证金计算器（统一的 USD 价值动态计算）
+        type DepositCalculator: pallet_trading_common::DepositCalculator<BalanceOf<Self>>;
 
         /// 请求超时（区块数）
         #[pallet::constant]
@@ -690,20 +700,20 @@ pub mod pallet {
 
             // 🆕 自动 Pin AI 解读内容到 IPFS（在创建 result 之前）
             // 使用 Standard 层级（3副本，24小时巡检）
-            <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+            <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                 b"divination-ai".to_vec(),
                 request_id,
                 content_cid.clone(),
-                pallet_stardust_ipfs::PinTier::Standard,
+                pallet_storage_service::PinTier::Standard,
             )?;
 
             // 如果有摘要，也 Pin 摘要（Temporary 层级）
             if let Some(ref summary) = summary_cid_bounded {
-                let _ = <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+                let _ = <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                     b"divination-ai".to_vec(),
                     request_id,
                     summary.to_vec(),
-                    pallet_stardust_ipfs::PinTier::Temporary,
+                    pallet_storage_service::PinTier::Temporary,
                 );
                 // 注意：摘要 Pin 失败不影响主流程，使用 let _ 忽略错误
             }
@@ -1028,8 +1038,8 @@ pub mod pallet {
                 );
             }
 
-            // 收取争议押金
-            let deposit = T::DisputeDeposit::get();
+            // 收取争议押金（1 USDT 等值的 DUST）
+            let deposit = Self::calculate_dispute_deposit();
             T::AiCurrency::reserve(&who, deposit)?;
 
             // 创建争议
@@ -1479,6 +1489,17 @@ pub mod pallet {
             });
 
             Ok(())
+        }
+
+        /// 计算争议押金金额（1 USDT 等值的 DUST）
+        /// 
+        /// 使用统一的 DepositCalculator trait 计算
+        pub fn calculate_dispute_deposit() -> BalanceOf<T> {
+            use pallet_trading_common::DepositCalculator;
+            T::DepositCalculator::calculate_deposit(
+                T::DisputeDepositUsd::get(),
+                T::DisputeDeposit::get(),
+            )
         }
     }
 }

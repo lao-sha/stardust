@@ -8,24 +8,32 @@ interface StorageInterface {
   multiRemove(keys: string[]): Promise<void>;
 }
 
-// Web implementation using localStorage
-const webStorage: StorageInterface = {
-  async getItem(key: string): Promise<string | null> {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  },
-  async setItem(key: string, value: string): Promise<void> {
-    localStorage.setItem(key, value);
-  },
-  async removeItem(key: string): Promise<void> {
-    localStorage.removeItem(key);
-  },
-  async multiRemove(keys: string[]): Promise<void> {
-    keys.forEach(key => localStorage.removeItem(key));
-  },
+// Web implementation using IndexedDB (more secure than localStorage)
+let webStorage: StorageInterface | null = null;
+
+const getWebStorage = (): StorageInterface => {
+  if (!webStorage) {
+    const { secureStorage } = require('./secure-storage-indexeddb');
+    webStorage = {
+      async getItem(key: string): Promise<string | null> {
+        try {
+          return await secureStorage.getItem(key);
+        } catch {
+          return null;
+        }
+      },
+      async setItem(key: string, value: string): Promise<void> {
+        await secureStorage.setItem(key, value);
+      },
+      async removeItem(key: string): Promise<void> {
+        await secureStorage.removeItem(key);
+      },
+      async multiRemove(keys: string[]): Promise<void> {
+        await secureStorage.multiRemove(keys);
+      },
+    };
+  }
+  return webStorage;
 };
 
 // Native implementation using AsyncStorage
@@ -46,7 +54,7 @@ const getNativeStorage = async (): Promise<StorageInterface> => {
 
 // Unified storage API
 export const storage: StorageInterface = Platform.OS === 'web'
-  ? webStorage
+  ? getWebStorage()
   : {
       async getItem(key: string): Promise<string | null> {
         const s = await getNativeStorage();

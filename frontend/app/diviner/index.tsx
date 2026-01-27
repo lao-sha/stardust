@@ -25,11 +25,26 @@ export default function DivinerEntryPage() {
   const [isProvider, setIsProvider] = useState(false);
 
   useEffect(() => {
-    // TODO: 检查当前用户是否已是占卜师
-    setTimeout(() => {
-      setIsProvider(false);
-      setLoading(false);
-    }, 500);
+    const checkProviderStatus = async () => {
+      try {
+        const { divinationMarketService } = await import('@/services/divination-market.service');
+        const { useWalletStore } = await import('@/stores/wallet.store');
+        const address = useWalletStore.getState().address;
+        
+        if (address) {
+          // 检查当前用户是否已是占卜师
+          const provider = await divinationMarketService.getProviderByAccount(address);
+          setIsProvider(provider !== null && provider.status === 'Active');
+        }
+      } catch (error) {
+        console.error('Check provider status error:', error);
+        setIsProvider(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    checkProviderStatus();
   }, []);
 
   const handleRegister = () => {

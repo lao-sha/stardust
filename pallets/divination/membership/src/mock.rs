@@ -1,6 +1,6 @@
 //! Mock runtime for testing the membership pallet.
 
-use crate as pallet_membership;
+use crate as pallet_divination_membership;
 use frame_support::{
     derive_impl,
     parameter_types,
@@ -21,7 +21,7 @@ frame_support::construct_runtime!(
         System: frame_system,
         Balances: pallet_balances,
         Timestamp: pallet_timestamp,
-        Membership: pallet_membership,
+        Membership: pallet_divination_membership,
     }
 );
 
@@ -87,6 +87,7 @@ impl pallet_timestamp::Config for Test {
 parameter_types! {
     pub const MembershipPalletId: PalletId = PalletId(*b"py/membr");
     pub const TreasuryAccountId: u64 = 1000;
+    pub const BurnAccountId: u64 = 9999;
     pub const RewardPoolAllocation: u32 = 1000; // 10%
     pub const NewAccountCooldown: u64 = 100; // 100 blocks for testing (vs 50400 in prod)
     pub const MinBalanceForRewards: u128 = 1_000_000_000_000; // 1 DUST
@@ -97,12 +98,50 @@ parameter_types! {
     pub const MaxRewardHistorySize: u32 = 100;
 }
 
-impl pallet_membership::Config for Test {
+/// Mock UserFundingProvider 实现
+pub struct MockUserFundingProvider;
+
+impl pallet_affiliate::UserFundingProvider<u64> for MockUserFundingProvider {
+    fn derive_user_funding_account(user: &u64) -> u64 {
+        *user + 10000
+    }
+}
+
+/// Mock AffiliateDistributor 实现
+pub struct MockAffiliateDistributor;
+
+impl pallet_affiliate::types::AffiliateDistributor<u64, u128, u64> for MockAffiliateDistributor {
+    fn distribute_rewards(
+        _buyer: &u64,
+        _amount: u128,
+        _target: Option<(u8, u64)>,
+    ) -> Result<u128, sp_runtime::DispatchError> {
+        Ok(0) // 不分配任何奖励
+    }
+}
+
+/// Mock PricingProvider 实现
+pub struct MockPricingProvider;
+
+impl pallet_trading_common::PricingProvider<u128> for MockPricingProvider {
+    fn get_dust_to_usd_rate() -> Option<u128> {
+        Some(1_000_000) // 1 DUST = 1 USD
+    }
+    
+    fn report_swap_order(_timestamp: u64, _price_usdt: u64, _dust_qty: u128) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+}
+
+impl pallet_divination_membership::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type WeightInfo = ();
     type PalletId = MembershipPalletId;
     type TreasuryAccount = TreasuryAccountId;
+    type BurnAccount = BurnAccountId;
+    type UserFundingProvider = MockUserFundingProvider;
+    type AffiliateDistributor = MockAffiliateDistributor;
     type RewardPoolAllocation = RewardPoolAllocation;
     type NewAccountCooldown = NewAccountCooldown;
     type MinBalanceForRewards = MinBalanceForRewards;
@@ -111,6 +150,7 @@ impl pallet_membership::Config for Test {
     type MaxDisplayNameLength = MaxDisplayNameLength;
     type MaxEncryptedDataLength = MaxEncryptedDataLength;
     type MaxRewardHistorySize = MaxRewardHistorySize;
+    type Pricing = MockPricingProvider;
 }
 
 /// Build genesis storage for testing.

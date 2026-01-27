@@ -11,87 +11,87 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { PageHeader } from '@/components/PageHeader';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { UnlockWalletDialog } from '@/components/UnlockWalletDialog';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
+import { Card, Button, LoadingSpinner, EmptyState } from '@/components/common';
 import {
   SwapAmountInput,
   TronAddressInput,
   BridgeMakerCard,
 } from '@/features/bridge/components';
 import { BridgeMaker } from '@/features/bridge/types';
+import { bridgeService } from '@/services/bridge.service';
+import { tradingService } from '@/services/trading.service';
+import { useWallet, useAsync } from '@/hooks';
 import { isWebEnvironment, isSignerUnlocked } from '@/lib/signer';
-
-const MIN_AMOUNT = 10;
-
-// 模拟做市商数据
-const mockMakers: BridgeMaker[] = [
-  {
-    id: 1,
-    account: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-    tronAddress: 'TJYeasTPa6gpEEfYcPQgLHu9eGNj1FGrVK',
-    isActive: true,
-    rating: 4.8,
-    completedSwaps: 156,
-    avgResponseTime: 600,
-    creditLevel: 'A+',
-  },
-  {
-    id: 2,
-    account: '5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty',
-    tronAddress: 'TN3W4H6rK2ce4vX9YnFQHwKENnHjoxb3m9',
-    isActive: true,
-    rating: 4.5,
-    completedSwaps: 89,
-    avgResponseTime: 900,
-    creditLevel: 'A',
-  },
-  {
-    id: 3,
-    account: '5FLSigC9HGRKVhB9FiEo4Y3koPsNmBmLJbpXg2mp1hXcS59Y',
-    tronAddress: 'TVj7RNVHy6thbM7BWdSe9G6gXwKhjhdNZS',
-    isActive: false,
-    rating: 4.2,
-    completedSwaps: 45,
-    avgResponseTime: 1200,
-    creditLevel: 'B+',
-  },
-];
 
 export default function MakerBridgePage() {
   const router = useRouter();
+  const { address, balance, ensureUnlocked } = useWallet();
+  const { execute, isLoading } = useAsync();
+
   const [dustAmount, setDustAmount] = useState('');
   const [tronAddress, setTronAddress] = useState('');
   const [selectedMaker, setSelectedMaker] = useState<BridgeMaker | null>(null);
   const [dustPrice, setDustPrice] = useState(0.10);
-  const [balance, setBalance] = useState('1000');
   const [makers, setMakers] = useState<BridgeMaker[]>([]);
   const [loadingMakers, setLoadingMakers] = useState(true);
-  const [loading, setLoading] = useState(false);
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
   const [showTxStatus, setShowTxStatus] = useState(false);
   const [txStatus, setTxStatus] = useState('准备中...');
 
   useEffect(() => {
-    // TODO: 从链上获取做市商列表
-    setTimeout(() => {
-      setMakers(mockMakers);
-      setLoadingMakers(false);
-    }, 500);
+    loadMakers();
+    loadPrice();
   }, []);
+
+  const loadMakers = async () => {
+    try {
+      setLoadingMakers(true);
+      const makerList = await tradingService.getMakers();
+      // 转换为 BridgeMaker 格式
+      const bridgeMakers: BridgeMaker[] = makerList.map((m) => ({
+        id: m.id,
+        account: m.owner,
+        tronAddress: m.tronAddress,
+        isActive: !m.servicePaused,
+        rating: m.rating,
+        completedSwaps: m.usersServed,
+        avgResponseTime: 600, // 默认值
+        creditLevel: m.rating >= 4.8 ? 'A+' : m.rating >= 4.5 ? 'A' : 'B+',
+      }));
+      setMakers(bridgeMakers);
+    } catch (error) {
+      console.error('Load makers error:', error);
+      Alert.alert('错误', '加载做市商列表失败');
+    } finally {
+      setLoadingMakers(false);
+    }
+  };
+
+  const loadPrice = async () => {
+    try {
+      const price = await bridgeService.getDustPrice();
+      setDustPrice(price);
+    } catch (error) {
+      console.error('Load price error:', error);
+    }
+  };
 
   const validateForm = (): boolean => {
     const amount = parseFloat(dustAmount);
+    const balanceNum = Number(balance) / 1e12;
+
     if (isNaN(amount) || amount < MIN_AMOUNT) {
       Alert.alert('提示', `最小兑换金额为 ${MIN_AMOUNT} DUST`);
       return false;
     }
 
-    if (amount > parseFloat(balance)) {
+    if (amount > balanceNum) {
       Alert.alert('提示', 'DUST 余额不足');
       return false;
     }
@@ -119,8 +119,9 @@ export default function MakerBridgePage() {
   const handleSwap = async () => {
     if (!validateForm()) return;
 
-    // 检查是否需要解锁钱包
-    if (!isWebEnvironment() && !isSignerUnlocked()) {
+    // 确保钱包已解锁
+    const unlocked = await ensureUnlocked();
+    if (!unlocked) {
       setShowUnlockDialog(true);
       return;
     }
@@ -134,42 +135,41 @@ export default function MakerBridgePage() {
   };
 
   const executeSwap = async () => {
-    if (!selectedMaker) return;
+    if (!selectedMaker || !address) return;
 
     try {
-      setShowTxStatus(true);
-      setTxStatus('正在创建兑换请求...');
+      await execute(async () => {
+        setShowTxStatus(true);
+        setTxStatus('正在创建兑换请求...');
 
-      // TODO: 调用链上 bridge.maker_swap() 方法
-      // const api = await getApi();
-      // const tx = api.tx.bridge.makerSwap(
-      //   selectedMaker.id,
-      //   dustAmountBigInt,
-      //   tronAddressBytes
-      // );
-      // await signAndSend(tx);
+        const dustAmountBigInt = BigInt(Math.floor(parseFloat(dustAmount) * 1e12));
 
-      // 模拟交易
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setTxStatus('交易已提交，等待确认...');
-      await new Promise(resolve => setTimeout(resolve, 1500));
+        const swapId = await bridgeService.makerSwap(
+          selectedMaker.id,
+          dustAmountBigInt,
+          tronAddress,
+          (status) => {
+            setTxStatus(status);
+          }
+        );
 
-      setShowTxStatus(false);
+        setShowTxStatus(false);
 
-      Alert.alert(
-        '成功',
-        '兑换请求已创建，做市商将在 30 分钟内转账',
-        [
-          {
-            text: '查看记录',
-            onPress: () => router.push('/bridge/history' as any),
-          },
-          {
-            text: '确定',
-            style: 'cancel',
-          },
-        ]
-      );
+        Alert.alert(
+          '成功',
+          `兑换请求已创建 (ID: ${swapId})，做市商将在 30 分钟内转账`,
+          [
+            {
+              text: '查看记录',
+              onPress: () => router.push('/bridge/history' as any),
+            },
+            {
+              text: '确定',
+              style: 'cancel',
+            },
+          ]
+        );
+      });
     } catch (error) {
       setShowTxStatus(false);
       const errorMessage = error instanceof Error ? error.message : '创建兑换失败';
@@ -187,13 +187,13 @@ export default function MakerBridgePage() {
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         {/* 说明卡片 */}
         <View style={styles.section}>
-          <View style={styles.infoCard}>
+          <Card style={styles.infoCard}>
             <Text style={styles.infoTitle}>👥 做市商桥接</Text>
             <Text style={styles.infoText}>
               选择做市商进行兑换，通常 30 分钟内到账。
               超时未完成将自动退款。
             </Text>
-          </View>
+          </Card>
         </View>
 
         {/* 金额输入 */}
@@ -202,7 +202,7 @@ export default function MakerBridgePage() {
             value={dustAmount}
             onChangeText={setDustAmount}
             dustPrice={dustPrice}
-            balance={balance}
+            balance={(Number(balance) / 1e12).toFixed(4)}
             minAmount={MIN_AMOUNT}
           />
         </View>
@@ -225,14 +225,13 @@ export default function MakerBridgePage() {
           </View>
 
           {loadingMakers ? (
-            <View style={styles.loading}>
-              <ActivityIndicator size="large" color="#B2955D" />
-              <Text style={styles.loadingText}>加载中...</Text>
-            </View>
+            <LoadingSpinner text="加载做市商列表..." />
           ) : makers.length === 0 ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>暂无可用做市商</Text>
-            </View>
+            <EmptyState
+              icon="people-outline"
+              title="暂无可用做市商"
+              description="请稍后再试"
+            />
           ) : (
             makers.map((maker) => (
               <BridgeMakerCard
@@ -248,7 +247,7 @@ export default function MakerBridgePage() {
         {/* 兑换详情 */}
         {selectedMaker && (
           <View style={styles.section}>
-            <View style={styles.detailCard}>
+            <Card>
               <Text style={styles.detailTitle}>兑换详情</Text>
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>支付</Text>
@@ -279,26 +278,18 @@ export default function MakerBridgePage() {
                   ≈ {usdtEstimate.toFixed(2)} USDT
                 </Text>
               </View>
-            </View>
+            </Card>
           </View>
         )}
 
         {/* 提交按钮 */}
         <View style={styles.section}>
-          <TouchableOpacity
-            style={[
-              styles.submitButton,
-              (!dustAmount || !tronAddress || !selectedMaker) && styles.submitButtonDisabled,
-            ]}
+          <Button
+            title="确认兑换"
             onPress={handleSwap}
-            disabled={!dustAmount || !tronAddress || !selectedMaker || loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.submitButtonText}>确认兑换</Text>
-            )}
-          </TouchableOpacity>
+            loading={isLoading}
+            disabled={!dustAmount || !tronAddress || !selectedMaker}
+          />
         </View>
 
         {/* 注意事项 */}
@@ -361,8 +352,6 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     backgroundColor: '#FFF9F0',
-    borderRadius: 12,
-    padding: 16,
     borderWidth: 1,
     borderColor: '#B2955D',
   },

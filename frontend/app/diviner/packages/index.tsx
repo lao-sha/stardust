@@ -2,7 +2,7 @@
  * 套餐管理列表页面
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,64 +16,71 @@ import {
 import { useRouter } from 'expo-router';
 import { PageHeader } from '@/components/PageHeader';
 import { BottomNavBar } from '@/components/BottomNavBar';
+import { UnlockWalletDialog } from '@/components/UnlockWalletDialog';
+import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
 import { PackageCard, ServicePackage, DivinationType, ServiceType } from '@/features/diviner';
+import { divinationMarketService } from '@/services/divination-market.service';
+import { useWalletStore } from '@/stores/wallet.store';
+import { isSignerUnlocked, unlockWalletForSigning } from '@/lib/signer';
 
 const THEME_COLOR = '#B2955D';
 const MAX_PACKAGES = 10;
 
-// Mock 数据
-const mockPackages: ServicePackage[] = [
-  {
-    id: 1,
-    providerId: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-    divinationType: DivinationType.Meihua,
-    serviceType: ServiceType.TextReading,
-    name: '梅花易数·文字详解',
-    description: '根据您的问题起卦，提供详细的卦象分析和建议，包含体用关系、五行生克等深度解读。',
-    price: BigInt(10 * 1e10),
-    duration: 0,
-    followUpCount: 3,
-    urgentAvailable: true,
-    urgentSurcharge: 5000,
-    isActive: true,
-    salesCount: 89,
-  },
-  {
-    id: 2,
-    providerId: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-    divinationType: DivinationType.Bazi,
-    serviceType: ServiceType.VoiceReading,
-    name: '八字命理·语音解读',
-    description: '根据您的出生时间排盘，通过语音详细讲解命盘格局、大运流年等。',
-    price: BigInt(25 * 1e10),
-    duration: 15,
-    followUpCount: 5,
-    urgentAvailable: false,
-    urgentSurcharge: 0,
-    isActive: true,
-    salesCount: 45,
-  },
-];
-
 export default function PackagesListPage() {
   const router = useRouter();
+  const { address } = useWalletStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [packages, setPackages] = useState<ServicePackage[]>([]);
+  const [providerId, setProviderId] = useState<number | null>(null);
+  const [showUnlockDialog, setShowUnlockDialog] = useState(false);
+  const [showTxStatus, setShowTxStatus] = useState(false);
+  const [txStatus, setTxStatus] = useState('');
+  const [pendingAction, setPendingAction] = useState<{ type: 'toggle' | 'delete'; id: number; isActive?: boolean } | null>(null);
 
-  const loadData = async () => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    setPackages(mockPackages);
-  };
+  const loadData = useCallback(async () => {
+    if (!address) return;
+
+    try {
+      // 获取当前用户的解卦师信息
+      const provider = await divinationMarketService.getProviderByAccount(address);
+      if (provider) {
+        setProviderId(provider.id);
+        // 获取套餐列表
+        const pkgs = await divinationMarketService.getProviderPackages(provider.id);
+        // 转换为前端格式
+        const formattedPkgs: ServicePackage[] = pkgs.map(p => ({
+          id: p.id,
+          providerId: address,
+          divinationType: DivinationType.Bazi, // 需要从链上数据映射
+          serviceType: ServiceType.TextReading,
+          name: p.name,
+          description: p.description,
+          price: p.price,
+          duration: p.duration,
+          followUpCount: 3,
+          urgentAvailable: false,
+          urgentSurcharge: 0,
+          isActive: p.isActive,
+          salesCount: 0,
+        }));
+        setPackages(formattedPkgs);
+      }
+    } catch (error) {
+      console.error('Load packages error:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [address]);
 
   useEffect(() => {
-    loadData().finally(() => setLoading(false));
-  }, []);
+    loadData();
+  }, [loadData]);
 
-  const onRefresh = async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
+    loadData();
   };
 
   const handleCreate = () => {
@@ -89,10 +96,12 @@ export default function PackagesListPage() {
   };
 
   const handleToggle = (id: number, isActive: boolean) => {
-    // TODO: 调用链上方法切换状态
-    setPackages(prev =>
-      prev.map(p => (p.id === id ? { ...p, isActive } : p))
-    );
+    if (!isSignerUnlocked()) {
+      setPendingAction({ type: 'toggle', id, isActive });
+      setShowUnlockDialog(true);
+      return;
+    }
+    executeToggle(id, isActive);
   };
 
   const handleDelete = (id: number) => {
@@ -102,11 +111,72 @@ export default function PackagesListPage() {
         text: '删除',
         style: 'destructive',
         onPress: () => {
-          // TODO: 调用链上方法删除
-          setPackages(prev => prev.filter(p => p.id !== id));
+          if (!isSignerUnlocked()) {
+            setPendingAction({ type: 'delete', id });
+            setShowUnlockDialog(true);
+            return;
+          }
+          executeDelete(id);
         },
       },
     ]);
+  };
+
+  const handleWalletUnlocked = async (password: string) => {
+    try {
+      await unlockWalletForSigning(password);
+      setShowUnlockDialog(false);
+      if (pendingAction) {
+        if (pendingAction.type === 'toggle') {
+          await executeToggle(pendingAction.id, pendingAction.isActive!);
+        } else {
+          await executeDelete(pendingAction.id);
+        }
+        setPendingAction(null);
+      }
+    } catch (error: any) {
+      Alert.alert('解锁失败', error.message || '密码错误');
+    }
+  };
+
+  const executeToggle = async (id: number, isActive: boolean) => {
+    setShowTxStatus(true);
+    setTxStatus(isActive ? '正在激活套餐...' : '正在停用套餐...');
+
+    try {
+      if (isActive) {
+        await divinationMarketService.reactivatePackage(id, (status) => setTxStatus(status));
+      } else {
+        await divinationMarketService.deactivatePackage(id, (status) => setTxStatus(status));
+      }
+
+      setTxStatus('操作成功！');
+      setTimeout(() => {
+        setShowTxStatus(false);
+        loadData();
+      }, 1500);
+    } catch (error: any) {
+      setShowTxStatus(false);
+      Alert.alert('操作失败', error.message || '请稍后重试');
+    }
+  };
+
+  const executeDelete = async (id: number) => {
+    setShowTxStatus(true);
+    setTxStatus('正在删除套餐...');
+
+    try {
+      await divinationMarketService.removePackage(id, (status) => setTxStatus(status));
+
+      setTxStatus('删除成功！');
+      setTimeout(() => {
+        setShowTxStatus(false);
+        loadData();
+      }, 1500);
+    } catch (error: any) {
+      setShowTxStatus(false);
+      Alert.alert('删除失败', error.message || '请稍后重试');
+    }
   };
 
   if (loading) {
@@ -169,6 +239,18 @@ export default function PackagesListPage() {
           <Text style={styles.createBtnText}>+ 创建新套餐</Text>
         </Pressable>
       </View>
+
+      <UnlockWalletDialog
+        visible={showUnlockDialog}
+        onClose={() => setShowUnlockDialog(false)}
+        onUnlock={handleWalletUnlocked}
+      />
+
+      <TransactionStatusDialog
+        visible={showTxStatus}
+        status={txStatus}
+        onClose={() => setShowTxStatus(false)}
+      />
 
       <BottomNavBar activeTab="profile" />
     </View>

@@ -553,6 +553,7 @@ SKIP_WASM_BUILD=1 cargo test -p pallet-divination-market
 ## 相关模块
 
 - **pallet-divination-common**：通用类型与 trait 定义
+- **pallet-divination-privacy**：隐私保护与服务提供者注册
 - **pallet-divination-nft**：占卜结果 NFT 铸造
 - **pallet-divination-ai**：AI 解读服务
 - **pallet-meihua**：梅花易数排盘
@@ -561,6 +562,42 @@ SKIP_WASM_BUILD=1 cargo test -p pallet-divination-market
 - **pallet-qimen**：奇门遁甲排盘
 - **pallet-ziwei**：紫微斗数排盘
 - **pallet-tarot**：塔罗牌排盘
+
+## 未来规划：服务提供者档案增强
+
+> 原 `pallet-divination-profile` 规划内容已合并至此
+
+### 规划功能
+
+1. **档案状态管理**
+   - `Pending`（待审核）→ `Active`（活跃）→ `Suspended`（暂停）→ `Banned`（封禁）
+
+2. **资质认证增强**
+   - 证书类型：学历证书、专业资格、行业协会认证、师承证明、获奖证书
+   - 管理员审核认证流程
+   - 认证徽章展示
+
+3. **保证金机制**
+   - 注册需缴纳保证金（已实现 `MinDeposit`）
+   - 违规扣除保证金
+   - 退出返还保证金
+
+4. **档案搜索与推荐**
+   - 按专业领域搜索
+   - 按评分排序
+   - 推荐算法
+
+### 当前实现位置
+
+| 功能 | 模块 | 状态 |
+|------|------|------|
+| 服务提供者注册 | `privacy` | ✅ 已实现 |
+| 服务提供者类型 | `privacy` | ✅ 已实现 |
+| 信誉分系统 | `privacy` | ✅ 已实现 |
+| 详细资料管理 | `market` | ✅ 已实现 |
+| 资质证书上传 | `market` | ✅ 已实现 |
+| 等级体系 | `market` | ✅ 已实现 |
+| 评价系统 | `market` | ✅ 已实现 |
 
 ## 许可证
 

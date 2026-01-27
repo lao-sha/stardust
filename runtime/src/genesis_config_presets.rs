@@ -79,19 +79,19 @@ fn testnet_genesis(
 		sudo: SudoConfig { key: Some(root) },
 		// 委员会初始成员配置
 		technical_committee: TechnicalCommitteeConfig {
-			members: technical_members.clone(),
+			members: vec![],
 			phantom: Default::default(),
 		},
 		arbitration_committee: ArbitrationCommitteeConfig {
-			members: arbitration_members.clone(),
+			members: vec![],
 			phantom: Default::default(),
 		},
 		treasury_council: TreasuryCouncilConfig {
-			members: treasury_members.clone(),
+			members: vec![],
 			phantom: Default::default(),
 		},
 		content_committee: ContentCommitteeConfig {
-			members: content_members.clone(),
+			members: vec![],
 			phantom: Default::default(),
 		},
 		// 委员会成员管理配置（含 Prime）

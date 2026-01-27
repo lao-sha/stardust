@@ -11,7 +11,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTradingStore } from '@/stores/trading.store';
@@ -21,6 +20,8 @@ import { UnlockWalletDialog } from '@/components/UnlockWalletDialog';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { PageHeader } from '@/components/PageHeader';
+import { Card, Button } from '@/components/common';
+import { useAsync } from '@/hooks';
 import { isWebEnvironment, isSignerUnlocked } from '@/lib/signer';
 
 const MIN_AMOUNT = 20;
@@ -39,6 +40,7 @@ export default function CreateOrderPage() {
     createOrder,
   } = useTradingStore();
 
+  const { execute, isLoading } = useAsync();
   const [amount, setAmount] = useState<string>('50');
   const [estimatedDust, setEstimatedDust] = useState<string>('0');
   const [actualPrice, setActualPrice] = useState<number>(0);
@@ -55,8 +57,9 @@ export default function CreateOrderPage() {
   } | null>(null);
 
   useEffect(() => {
-    fetchMakers();
-    fetchDustPrice();
+    execute(async () => {
+      await Promise.all([fetchMakers(), fetchDustPrice()]);
+    });
   }, []);
 
   useEffect(() => {
@@ -221,7 +224,7 @@ export default function CreateOrderPage() {
         {/* 预计获得 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>预计获得</Text>
-          <View style={styles.estimateCard}>
+          <Card style={styles.estimateCard}>
             <Text style={styles.estimateValue}>≈ {estimatedDust} DUST</Text>
             <View style={styles.estimateDetails}>
               <Text style={styles.estimateDetail}>
@@ -234,7 +237,7 @@ export default function CreateOrderPage() {
                 </Text>
               )}
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 选择做市商 */}
@@ -252,17 +255,12 @@ export default function CreateOrderPage() {
 
         {/* 创建订单按钮 */}
         <View style={styles.section}>
-          <TouchableOpacity
-            style={[styles.createButton, !selectedMaker && styles.createButtonDisabled]}
+          <Button
+            title="创建订单"
             onPress={handleCreateOrder}
-            disabled={!selectedMaker || loadingOrder}
-          >
-            {loadingOrder ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.createButtonText}>创建订单</Text>
-            )}
-          </TouchableOpacity>
+            loading={loadingOrder || isLoading}
+            disabled={!selectedMaker || loadingOrder || isLoading}
+          />
         </View>
       </ScrollView>
 
@@ -310,8 +308,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   estimateCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
     padding: 20,
   },
   estimateValue: {
@@ -328,19 +324,5 @@ const styles = StyleSheet.create({
   estimateDetail: {
     fontSize: 14,
     color: '#666666',
-  },
-  createButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  createButtonDisabled: {
-    backgroundColor: '#CCCCCC',
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

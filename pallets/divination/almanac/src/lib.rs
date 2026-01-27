@@ -24,6 +24,9 @@
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 mod types;
 pub use types::*;
 

@@ -15,6 +15,7 @@ import { useChatStore } from '@/stores/chat.store';
 import { ChatHeader } from '../components/ChatHeader';
 import { MessageList } from '../components/MessageList';
 import { ChatInput } from '../components/ChatInput';
+import { uploadImageToIpfs } from '@/services/ipfs.service';
 
 export function ChatScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
@@ -52,9 +53,15 @@ export function ChatScreen() {
       try {
         // 如果有图片，发送图片消息
         if (imageUri) {
-          // TODO: 上传图片到 IPFS 并获取 CID
-          // 暂时使用本地 URI 作为内容
-          await sendMessage(currentSession.peerAddress, imageUri, 1); // MessageType.Image = 1
+          // 上传图片到 IPFS 并获取 CID
+          try {
+            const imageCid = await uploadImageToIpfs(imageUri);
+            await sendMessage(currentSession.peerAddress, imageCid, 1); // MessageType.Image = 1
+          } catch (uploadError) {
+            console.error('Image upload failed:', uploadError);
+            Alert.alert('图片上传失败', '无法上传图片到 IPFS，请稍后重试');
+            return;
+          }
         } else if (content) {
           // 发送文本消息
           await sendMessage(currentSession.peerAddress, content, 0); // MessageType.Text = 0

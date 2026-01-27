@@ -9,9 +9,8 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
-  ActivityIndicator,
+  TouchableOpacity,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -21,6 +20,8 @@ import { useMakerStore } from '@/stores/maker.store';
 import { MakerService, PenaltyRecord } from '@/services/maker.service';
 import { PageHeader } from '@/components/PageHeader';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
+import { Card, Button, LoadingSpinner } from '@/components/common';
+import { useAsync } from '@/hooks';
 
 export default function AppealPage() {
   const router = useRouter();
@@ -28,12 +29,12 @@ export default function AppealPage() {
   const {
     penalties,
     appealPenalty,
-    isSubmitting,
     txStatus,
     error,
     clearError,
     fetchPenalties,
   } = useMakerStore();
+  const { execute, isLoading } = useAsync();
 
   const [penalty, setPenalty] = useState<PenaltyRecord | null>(null);
   const [reason, setReason] = useState('');
@@ -62,8 +63,8 @@ export default function AppealPage() {
     // 生成证据 CID（实际应该上传到 IPFS）
     const cid = evidenceCid || `appeal_${penalty.id}_${Date.now()}`;
 
-    try {
-      setShowTxDialog(true);
+    setShowTxDialog(true);
+    await execute(async () => {
       await appealPenalty(penalty.id, cid);
       setTimeout(() => {
         setShowTxDialog(false);
@@ -71,9 +72,7 @@ export default function AppealPage() {
           { text: '确定', onPress: () => router.back() },
         ]);
       }, 1500);
-    } catch (err) {
-      // 错误已在 store 中处理
-    }
+    });
   };
 
   const handleCloseTxDialog = () => {
@@ -84,7 +83,7 @@ export default function AppealPage() {
   if (!penalty) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#B2955D" />
+        <LoadingSpinner text="加载中..." />
       </View>
     );
   }
@@ -119,7 +118,7 @@ export default function AppealPage() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* 扣除信息 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>扣除编号</Text>
             <Text style={styles.infoValue}>#P{penalty.id}</Text>
@@ -134,7 +133,7 @@ export default function AppealPage() {
             <Text style={styles.infoLabel}>扣除原因</Text>
             <Text style={styles.infoValue}>{typeText}</Text>
           </View>
-        </View>
+        </Card>
 
         {/* 申诉理由 */}
         <View style={styles.section}>
@@ -174,7 +173,7 @@ export default function AppealPage() {
         </View>
 
         {/* 申诉须知 */}
-        <View style={styles.infoCard}>
+        <Card style={[styles.section, styles.infoCard]}>
           <Text style={styles.infoCardIcon}>⚠️</Text>
           <Text style={styles.infoCardTitle}>申诉须知</Text>
           <View style={styles.infoList}>
@@ -183,20 +182,15 @@ export default function AppealPage() {
             <Text style={styles.infoItem}>• 申诉成功将退还扣除金额</Text>
             <Text style={styles.infoItem}>• 恶意申诉将加重处罚</Text>
           </View>
-        </View>
+        </Card>
 
         {/* 提交按钮 */}
-        <TouchableOpacity
-          style={[styles.submitButton, (!reason.trim() || isSubmitting) && styles.submitButtonDisabled]}
+        <Button
+          title="提交申诉"
           onPress={handleSubmit}
-          disabled={!reason.trim() || isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitButtonText}>提交申诉</Text>
-          )}
-        </TouchableOpacity>
+          loading={isLoading}
+          disabled={!reason.trim() || isLoading}
+        />
       </ScrollView>
 
       {/* 交易状态弹窗 */}
@@ -238,10 +232,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+  section: {
     marginBottom: 16,
   },
   infoRow: {
@@ -327,9 +318,6 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     backgroundColor: '#FFF9E6',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
   },
   infoCardIcon: {
     fontSize: 20,
@@ -348,20 +336,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666666',
     lineHeight: 20,
-  },
-  submitButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#C9C9C9',
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

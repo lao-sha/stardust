@@ -16,18 +16,21 @@ interface TransactionStatusDialogProps {
   visible: boolean;
   status: string;
   title?: string;
+  onClose?: () => void;
 }
 
 export const TransactionStatusDialog: React.FC<TransactionStatusDialogProps> = ({
   visible,
   status,
   title = '交易处理中',
+  onClose,
 }) => {
   return (
     <Modal
       visible={visible}
       transparent
       animationType="fade"
+      onRequestClose={onClose}
     >
       <View style={styles.overlay}>
         <View style={styles.dialog}>

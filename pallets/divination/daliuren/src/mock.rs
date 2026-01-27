@@ -55,12 +55,6 @@ parameter_types! {
     pub const DivinationFee: u64 = 1_000_000_000; // 1 DUST (12 decimals scaled down)
     /// AI 解读费用
     pub const AiInterpretationFee: u64 = 5_000_000_000; // 5 DUST
-    /// 每 KB 存储押金（测试值：100）
-    pub const StorageDepositPerKb: u128 = 100;
-    /// 最小存储押金（测试值：10）
-    pub const MinStorageDeposit: u128 = 10;
-    /// 最大存储押金（测试值：100_000_000）
-    pub const MaxStorageDeposit: u128 = 100_000_000;
 }
 
 /// 测试随机数生成器
@@ -87,10 +81,6 @@ impl pallet_daliuren::Config for Test {
     type AiInterpretationFee = AiInterpretationFee;
     type AiSubmitter = EnsureSigned<u64>;
     type WeightInfo = ();
-    // 存储押金相关配置
-    type StorageDepositPerKb = StorageDepositPerKb;
-    type MinStorageDeposit = MinStorageDeposit;
-    type MaxStorageDeposit = MaxStorageDeposit;
 }
 
 /// 测试账户

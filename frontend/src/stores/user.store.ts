@@ -47,11 +47,27 @@ export const useUserStore = create<UserState>()((set, get) => ({
       const service = initChatService(address);
       await service.init();
 
-      // 检查是否已注册
-      // TODO: 从链上查询当前用户的 ChatUserId
-      // 这里需要添加查询逻辑
-
-      set({ isLoading: false });
+      // 从链上查询当前用户的 ChatUserId
+      const chatUserId = await service.getMyChatUserId();
+      
+      if (chatUserId !== null) {
+        // 用户已注册，获取完整资料
+        const profile = await service.getMyProfile();
+        set({
+          isRegistered: true,
+          myChatUserId: chatUserId,
+          myProfile: profile,
+          isLoading: false,
+        });
+      } else {
+        // 用户未注册
+        set({
+          isRegistered: false,
+          myChatUserId: null,
+          myProfile: null,
+          isLoading: false,
+        });
+      }
     } catch (error) {
       set({ error: (error as Error).message, isLoading: false });
     }

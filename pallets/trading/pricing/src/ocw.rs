@@ -27,7 +27,7 @@ use sp_runtime::{
     traits::SaturatedConversion,
 };
 
-use crate::{pallet::Call, Config, Pallet, ExchangeRateData};
+use crate::{Config, Pallet, ExchangeRateData};
 
 // ===== 🆕 P1修复：多数据源配置 =====
 

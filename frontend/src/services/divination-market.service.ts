@@ -6,6 +6,64 @@ import { ApiPromise } from '@polkadot/api';
 import { getApi } from '@/lib/api';
 import { signAndSend, getCurrentSignerAddress } from '@/lib/signer';
 import { u8aToHex } from '@polkadot/util';
+import type {
+  RawProvider,
+  RawServicePackage,
+  RawMarketOrder,
+  RawReview,
+} from '@/types/substrate.types';
+import { parseMarketOrderStatus, parseString, parseNumber } from '@/types/type-guards';
+
+/** 链上数据的 JSON 表示 */
+interface ProviderJson {
+  id?: number;
+  account?: string;
+  name?: string;
+  bio?: string;
+  specialties?: number;
+  supportedTypes?: number;
+  deposit?: string | number;
+  status?: string;
+  rating?: number;
+  totalOrders?: number;
+  completedOrders?: number;
+  createdAt?: number;
+}
+
+/** 链上订单数据的 JSON 表示 */
+interface OrderJson {
+  id?: number;
+  customer?: string;
+  providerId?: number;
+  packageId?: number;
+  questionCid?: string;
+  answerCid?: string;
+  amount?: string | number;
+  status?: string;
+  createdAt?: number;
+  completedAt?: number;
+}
+
+/** 链上套餐数据的 JSON 表示 */
+interface PackageJson {
+  id?: number;
+  providerId?: number;
+  name?: string;
+  description?: string;
+  price?: string | number;
+  duration?: number;
+  isActive?: boolean;
+}
+
+/** 链上评价数据的 JSON 表示 */
+interface ReviewJson {
+  orderId?: number;
+  customer?: string;
+  providerId?: number;
+  rating?: number;
+  comment?: string;
+  createdAt?: number;
+}
 
 /**
  * 签名状态回调
@@ -18,7 +76,8 @@ export type StatusCallback = (status: string) => void;
 export enum ProviderStatus {
   Pending = 'Pending',     // 待审核
   Active = 'Active',       // 已激活
-  Suspended = 'Suspended', // 已暂停
+  Paused = 'Paused',       // 已暂停
+  Suspended = 'Suspended', // 被封禁
   Deactivated = 'Deactivated', // 已注销
 }
 
@@ -27,6 +86,7 @@ export enum ProviderStatus {
  */
 export enum OrderStatus {
   Pending = 'Pending',       // 待接单
+  Paid = 'Paid',             // 已支付
   Accepted = 'Accepted',     // 已接单
   Completed = 'Completed',   // 已完成
   Cancelled = 'Cancelled',   // 已取消
@@ -241,6 +301,46 @@ export class DivinationMarketService {
   }
 
   /**
+   * 暂停服务（解卦师暂时停止接单）
+   * @param onStatusChange 状态回调
+   */
+  async pauseProvider(onStatusChange?: StatusCallback): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.pauseProvider();
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
+   * 恢复服务（解卦师恢复接单）
+   * @param onStatusChange 状态回调
+   */
+  async resumeProvider(onStatusChange?: StatusCallback): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.resumeProvider();
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
    * 获取解卦师信息
    * @param providerId 解卦师ID
    * @returns 解卦师信息
@@ -255,25 +355,64 @@ export class DivinationMarketService {
         return null;
       }
 
-      const data = provider.toJSON() as any;
+      const data = provider.toJSON() as ProviderJson;
 
       return {
-        id: data.id,
-        account: data.account,
-        name: data.name,
-        bio: data.bio,
-        specialties: data.specialties,
-        supportedTypes: data.supportedTypes,
-        deposit: BigInt(data.deposit),
-        status: data.status,
-        rating: data.rating,
-        totalOrders: data.totalOrders,
-        completedOrders: data.completedOrders,
-        createdAt: data.createdAt,
+        id: parseNumber(data.id),
+        account: parseString(data.account),
+        name: parseString(data.name),
+        bio: parseString(data.bio),
+        specialties: parseNumber(data.specialties),
+        supportedTypes: parseNumber(data.supportedTypes),
+        deposit: BigInt(data.deposit ?? 0),
+        status: (data.status as ProviderStatus) ?? ProviderStatus.Pending,
+        rating: parseNumber(data.rating),
+        totalOrders: parseNumber(data.totalOrders),
+        completedOrders: parseNumber(data.completedOrders),
+        createdAt: parseNumber(data.createdAt),
       };
     } catch (error) {
       console.error('[DivinationMarketService] Get provider error:', error);
       throw error;
+    }
+  }
+
+  /**
+   * 根据账户地址获取解卦师信息
+   * @param account 账户地址
+   * @returns 解卦师信息
+   */
+  async getProviderByAccount(account: string): Promise<Provider | null> {
+    const api = this.getApi();
+
+    try {
+      const entries = await api.query.divinationMarket.providers.entries();
+
+      for (const [key, value] of entries) {
+        const data = value.toJSON() as ProviderJson;
+
+        if (data.account === account) {
+          return {
+            id: parseNumber(data.id),
+            account: parseString(data.account),
+            name: parseString(data.name),
+            bio: parseString(data.bio),
+            specialties: parseNumber(data.specialties),
+            supportedTypes: parseNumber(data.supportedTypes),
+            deposit: BigInt(data.deposit ?? 0),
+            status: (data.status as ProviderStatus) ?? ProviderStatus.Pending,
+            rating: parseNumber(data.rating),
+            totalOrders: parseNumber(data.totalOrders),
+            completedOrders: parseNumber(data.completedOrders),
+            createdAt: parseNumber(data.createdAt),
+          };
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('[DivinationMarketService] Get provider by account error:', error);
+      return null;
     }
   }
 
@@ -289,22 +428,22 @@ export class DivinationMarketService {
       const providers: Provider[] = [];
 
       for (const [key, value] of entries) {
-        const data = value.toJSON() as any;
+        const data = value.toJSON() as ProviderJson;
 
         if (data.status === 'Active') {
           providers.push({
-            id: data.id,
-            account: data.account,
-            name: data.name,
-            bio: data.bio,
-            specialties: data.specialties,
-            supportedTypes: data.supportedTypes,
-            deposit: BigInt(data.deposit),
-            status: data.status,
-            rating: data.rating,
-            totalOrders: data.totalOrders,
-            completedOrders: data.completedOrders,
-            createdAt: data.createdAt,
+            id: parseNumber(data.id),
+            account: parseString(data.account),
+            name: parseString(data.name),
+            bio: parseString(data.bio),
+            specialties: parseNumber(data.specialties),
+            supportedTypes: parseNumber(data.supportedTypes),
+            deposit: BigInt(data.deposit ?? 0),
+            status: ProviderStatus.Active,
+            rating: parseNumber(data.rating),
+            totalOrders: parseNumber(data.totalOrders),
+            completedOrders: parseNumber(data.completedOrders),
+            createdAt: parseNumber(data.createdAt),
           });
         }
       }
@@ -316,6 +455,50 @@ export class DivinationMarketService {
     } catch (error) {
       console.error('[DivinationMarketService] Get providers error:', error);
       throw error;
+    }
+  }
+
+  /**
+   * 获取解卦师的订单列表
+   * @param providerId 解卦师ID
+   * @returns 订单列表
+   */
+  async getProviderOrders(providerId: number): Promise<Order[]> {
+    const api = this.getApi();
+
+    try {
+      if (!api.query.divinationMarket?.orders) {
+        return [];
+      }
+      const entries = await api.query.divinationMarket.orders.entries();
+      const orders: Order[] = [];
+
+      for (const [key, value] of entries) {
+        const data = value.toJSON() as OrderJson;
+
+        if (data.providerId === providerId) {
+          orders.push({
+            id: parseInt(key.args[0]?.toString() || '0', 10),
+            customer: parseString(data.customer),
+            providerId: parseNumber(data.providerId),
+            packageId: parseNumber(data.packageId),
+            questionCid: parseString(data.questionCid),
+            answerCid: data.answerCid,
+            amount: BigInt(data.amount ?? 0),
+            status: (data.status as OrderStatus) ?? OrderStatus.Pending,
+            createdAt: parseNumber(data.createdAt),
+            completedAt: data.completedAt,
+          });
+        }
+      }
+
+      // 按创建时间倒序排序
+      orders.sort((a, b) => b.createdAt - a.createdAt);
+
+      return orders;
+    } catch (error) {
+      console.error('[DivinationMarketService] Get provider orders error:', error);
+      return [];
     }
   }
 
@@ -384,17 +567,17 @@ export class DivinationMarketService {
       const packages: Package[] = [];
 
       for (const [key, value] of entries) {
-        const data = value.toJSON() as any;
+        const data = value.toJSON() as PackageJson;
 
         if (data.providerId === providerId) {
           packages.push({
-            id: data.id,
-            providerId: data.providerId,
-            name: data.name,
-            description: data.description,
-            price: BigInt(data.price),
-            duration: data.duration,
-            isActive: data.isActive,
+            id: parseNumber(data.id),
+            providerId: parseNumber(data.providerId),
+            name: parseString(data.name),
+            description: parseString(data.description),
+            price: BigInt(data.price ?? 0),
+            duration: parseNumber(data.duration),
+            isActive: data.isActive ?? false,
           });
         }
       }
@@ -463,6 +646,30 @@ export class DivinationMarketService {
     onStatusChange?.('准备交易...');
 
     const tx = api.tx.divinationMarket.deactivatePackage(packageId);
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
+   * 删除套餐
+   * @param packageId 套餐ID
+   * @param onStatusChange 状态回调
+   */
+  async removePackage(
+    packageId: number,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.removePackage(packageId);
 
     onStatusChange?.('等待签名...');
     await signAndSend(api, tx, accountAddress, onStatusChange);
@@ -602,6 +809,108 @@ export class DivinationMarketService {
   }
 
   /**
+   * 拒绝订单（解卦师调用）
+   * @param orderId 订单ID
+   * @param reason 拒绝原因（可选）
+   * @param onStatusChange 状态回调
+   */
+  async rejectOrder(
+    orderId: number,
+    reason?: string,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.rejectOrder(orderId, reason || null);
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
+   * 提交解卦结果（解卦师调用）
+   * @param orderId 订单ID
+   * @param answerCid 解答内容的 IPFS CID
+   * @param onStatusChange 状态回调
+   */
+  async submitInterpretation(
+    orderId: number,
+    answerCid: string,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.submitInterpretation(orderId, answerCid);
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
+   * 确认解卦结果（用户调用）
+   * @param orderId 订单ID
+   * @param onStatusChange 状态回调
+   */
+  async confirmInterpretation(
+    orderId: number,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.confirmInterpretation(orderId);
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
+   * 更新解卦结果（解卦师调用，用于修改已提交的解答）
+   * @param orderId 订单ID
+   * @param newAnswerCid 新解答内容的 IPFS CID
+   * @param onStatusChange 状态回调
+   */
+  async updateInterpretation(
+    orderId: number,
+    newAnswerCid: string,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.updateInterpretation(orderId, newAnswerCid);
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
    * 取消订单（用户或解卦师调用）
    * @param orderId 订单ID
    * @param reason 取消原因（可选）
@@ -703,17 +1012,17 @@ export class DivinationMarketService {
 
     const unsub = await api.query.divinationMarket.orders(orderId, (order) => {
       if (!order.isEmpty) {
-        const data = order.toJSON() as any;
+        const data = order.toJSON() as OrderJson;
         callback({
-          id: data.id,
-          customer: data.customer,
-          providerId: data.providerId,
-          packageId: data.packageId,
-          questionCid: data.questionCid,
+          id: parseNumber(data.id),
+          customer: parseString(data.customer),
+          providerId: parseNumber(data.providerId),
+          packageId: parseNumber(data.packageId),
+          questionCid: parseString(data.questionCid),
           answerCid: data.answerCid,
-          amount: BigInt(data.amount),
-          status: data.status,
-          createdAt: data.createdAt,
+          amount: BigInt(data.amount ?? 0),
+          status: (data.status as OrderStatus) ?? OrderStatus.Pending,
+          createdAt: parseNumber(data.createdAt),
           completedAt: data.completedAt,
         });
       }
@@ -737,18 +1046,18 @@ export class DivinationMarketService {
         return null;
       }
 
-      const data = order.toJSON() as any;
+      const data = order.toJSON() as OrderJson;
 
       return {
-        id: data.id,
-        customer: data.customer,
-        providerId: data.providerId,
-        packageId: data.packageId,
-        questionCid: data.questionCid,
+        id: parseNumber(data.id),
+        customer: parseString(data.customer),
+        providerId: parseNumber(data.providerId),
+        packageId: parseNumber(data.packageId),
+        questionCid: parseString(data.questionCid),
         answerCid: data.answerCid,
-        amount: BigInt(data.amount),
-        status: data.status,
-        createdAt: data.createdAt,
+        amount: BigInt(data.amount ?? 0),
+        status: (data.status as OrderStatus) ?? OrderStatus.Pending,
+        createdAt: parseNumber(data.createdAt),
         completedAt: data.completedAt,
       };
     } catch (error) {
@@ -770,19 +1079,19 @@ export class DivinationMarketService {
       const orders: Order[] = [];
 
       for (const [key, value] of entries) {
-        const data = value.toJSON() as any;
+        const data = value.toJSON() as OrderJson;
 
         if (data.customer === account) {
           orders.push({
-            id: data.id,
-            customer: data.customer,
-            providerId: data.providerId,
-            packageId: data.packageId,
-            questionCid: data.questionCid,
+            id: parseNumber(data.id),
+            customer: parseString(data.customer),
+            providerId: parseNumber(data.providerId),
+            packageId: parseNumber(data.packageId),
+            questionCid: parseString(data.questionCid),
             answerCid: data.answerCid,
-            amount: BigInt(data.amount),
-            status: data.status,
-            createdAt: data.createdAt,
+            amount: BigInt(data.amount ?? 0),
+            status: (data.status as OrderStatus) ?? OrderStatus.Pending,
+            createdAt: parseNumber(data.createdAt),
             completedAt: data.completedAt,
           });
         }
@@ -856,6 +1165,110 @@ export class DivinationMarketService {
   }
 
   /**
+   * 申请提现（解卦师申请提取收入，需要等待冷却期）
+   * @param amount 提现金额
+   * @param onStatusChange 状态回调
+   */
+  async requestWithdrawal(
+    amount: bigint,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.requestWithdrawal(amount.toString());
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
+   * 提交追问（用户对解答有疑问时提交追问）
+   * @param orderId 订单ID
+   * @param questionCid 追问内容的 IPFS CID
+   * @param onStatusChange 状态回调
+   */
+  async submitFollowUp(
+    orderId: number,
+    questionCid: string,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.submitFollowUp(orderId, questionCid);
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
+   * 回复追问（解卦师回复用户的追问）
+   * @param orderId 订单ID
+   * @param followUpId 追问ID
+   * @param answerCid 回复内容的 IPFS CID
+   * @param onStatusChange 状态回调
+   */
+  async replyFollowUp(
+    orderId: number,
+    followUpId: number,
+    answerCid: string,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.replyFollowUp(orderId, followUpId, answerCid);
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
+   * 回复评价（解卦师回复用户的评价）
+   * @param reviewId 评价ID
+   * @param reply 回复内容
+   * @param onStatusChange 状态回调
+   */
+  async replyReview(
+    reviewId: number,
+    reply: string,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备交易...');
+
+    const tx = api.tx.divinationMarket.replyReview(reviewId, reply);
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+  }
+
+  /**
    * 打赏（额外打赏解卦师）
    * @param providerId 解卦师ID
    * @param amount 打赏金额
@@ -900,16 +1313,16 @@ export class DivinationMarketService {
       const reviews: Review[] = [];
 
       for (const [key, value] of entries) {
-        const data = value.toJSON() as any;
+        const data = value.toJSON() as ReviewJson;
 
         if (data.providerId === providerId) {
           reviews.push({
-            orderId: data.orderId,
-            customer: data.customer,
-            providerId: data.providerId,
-            rating: data.rating,
-            comment: data.comment,
-            createdAt: data.createdAt,
+            orderId: parseNumber(data.orderId),
+            customer: parseString(data.customer),
+            providerId: parseNumber(data.providerId),
+            rating: parseNumber(data.rating),
+            comment: parseString(data.comment),
+            createdAt: parseNumber(data.createdAt),
           });
         }
       }
@@ -921,6 +1334,121 @@ export class DivinationMarketService {
     } catch (error) {
       console.error('[DivinationMarketService] Get reviews error:', error);
       throw error;
+    }
+  }
+
+  // ===== 收益相关 =====
+
+  /**
+   * 获取解卦师收益信息
+   * @param providerId 解卦师ID
+   * @returns 收益信息
+   */
+  async getProviderEarnings(providerId: number): Promise<{
+    availableBalance: bigint;
+    totalEarnings: bigint;
+    pendingWithdrawal: bigint;
+    lastWithdrawalAt?: number;
+  }> {
+    const api = this.getApi();
+
+    try {
+      // 查询解卦师收益存储
+      const earnings = await api.query.divinationMarket.providerEarnings(providerId);
+
+      if (earnings.isEmpty) {
+        return {
+          availableBalance: BigInt(0),
+          totalEarnings: BigInt(0),
+          pendingWithdrawal: BigInt(0),
+        };
+      }
+
+      const data = earnings.toJSON() as {
+        availableBalance?: string | number;
+        totalEarnings?: string | number;
+        pendingWithdrawal?: string | number;
+        lastWithdrawalAt?: number;
+      };
+
+      return {
+        availableBalance: BigInt(data.availableBalance ?? 0),
+        totalEarnings: BigInt(data.totalEarnings ?? 0),
+        pendingWithdrawal: BigInt(data.pendingWithdrawal ?? 0),
+        lastWithdrawalAt: data.lastWithdrawalAt,
+      };
+    } catch (error) {
+      console.error('[DivinationMarketService] Get earnings error:', error);
+      // 返回默认值
+      return {
+        availableBalance: BigInt(0),
+        totalEarnings: BigInt(0),
+        pendingWithdrawal: BigInt(0),
+      };
+    }
+  }
+
+  /**
+   * 获取解卦师提现历史
+   * @param providerId 解卦师ID
+   * @returns 提现记录列表
+   */
+  async getWithdrawalHistory(providerId: number): Promise<Array<{
+    id: number;
+    amount: bigint;
+    status: 'pending' | 'completed' | 'failed';
+    createdAt: number;
+    completedAt?: number;
+    txHash?: string;
+  }>> {
+    const api = this.getApi();
+
+    try {
+      // 查询提现记录
+      const entries = await api.query.divinationMarket.withdrawalRecords?.entries?.();
+
+      if (!entries) {
+        return [];
+      }
+
+      const records: Array<{
+        id: number;
+        amount: bigint;
+        status: 'pending' | 'completed' | 'failed';
+        createdAt: number;
+        completedAt?: number;
+        txHash?: string;
+      }> = [];
+
+      for (const [key, value] of entries) {
+        const data = value.toJSON() as {
+          providerId?: number;
+          amount?: string | number;
+          status?: string;
+          createdAt?: number;
+          completedAt?: number;
+          txHash?: string;
+        };
+
+        if (data.providerId === providerId) {
+          records.push({
+            id: parseInt(key.args[0]?.toString() || '0', 10),
+            amount: BigInt(data.amount ?? 0),
+            status: (data.status?.toLowerCase() as 'pending' | 'completed' | 'failed') ?? 'pending',
+            createdAt: data.createdAt ?? 0,
+            completedAt: data.completedAt,
+            txHash: data.txHash,
+          });
+        }
+      }
+
+      // 按时间倒序排序
+      records.sort((a, b) => b.createdAt - a.createdAt);
+
+      return records;
+    } catch (error) {
+      console.error('[DivinationMarketService] Get withdrawal history error:', error);
+      return [];
     }
   }
 }

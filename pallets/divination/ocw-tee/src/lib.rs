@@ -71,6 +71,10 @@ pub mod types;
 mod tests;
 
 pub use pallet::*;
+
+pub mod weights;
+pub use weights::WeightInfo;
+
 pub use traits::*;
 pub use types::*;
 
@@ -91,7 +95,7 @@ pub const MAX_REQUESTS_PER_BLOCK: u32 = 10;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use pallet_stardust_ipfs::IpfsPinner;
+    use pallet_storage_service::IpfsPinner;
 
     // ========================================================================
     // Pallet 配置
@@ -144,7 +148,7 @@ pub mod pallet {
         /// 通过此接口与 pallet-stardust-ipfs 交互：
         /// - 自动 Pin 加密数据到 IPFS
         /// - 使用三级扣费机制（IpfsPool → SubjectFunding → Grace）
-        type IpfsPinner: pallet_stardust_ipfs::IpfsPinner<Self::AccountId, u128>;
+        type IpfsPinner: pallet_storage_service::IpfsPinner<Self::AccountId, u128>;
     }
 
     // ========================================================================
@@ -881,16 +885,16 @@ pub mod pallet {
             // Phase 15: 自动 Pin 到 IPFS（使用三级扣费机制）
             // 根据隐私模式选择 PinTier
             let pin_tier = match privacy_mode {
-                PrivacyMode::Public => pallet_stardust_ipfs::PinTier::Temporary,
-                PrivacyMode::Encrypted => pallet_stardust_ipfs::PinTier::Standard,
-                PrivacyMode::Private => pallet_stardust_ipfs::PinTier::Critical,
+                PrivacyMode::Public => pallet_storage_service::PinTier::Temporary,
+                PrivacyMode::Encrypted => pallet_storage_service::PinTier::Standard,
+                PrivacyMode::Private => pallet_storage_service::PinTier::Critical,
             };
             
             // 调用 IpfsPinner 进行 Pin（使用 DivinationReport SubjectType）
             // 费用通过三级扣费机制处理：IpfsPool → SubjectFunding → Grace
             let _ = T::IpfsPinner::pin_cid_for_subject(
                 requester.clone(),
-                pallet_stardust_ipfs::SubjectType::DivinationReport,
+                pallet_storage_service::SubjectType::DivinationReport,
                 request_id,
                 manifest_cid.clone(),
                 Some(pin_tier),

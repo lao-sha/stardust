@@ -1,4 +1,4 @@
-# 会员系统模块 (pallet-membership)
+# 会员系统模块 (pallet-divination-membership)
 
 Stardust 占卜平台的会员订阅管理模块，提供 6 级会员体系、DUST 代币奖励、每日签到和用户档案管理功能。
 
@@ -13,7 +13,7 @@ Stardust 占卜平台的会员订阅管理模块，提供 6 级会员体系、DU
 
 ## 会员等级
 
-| 等级 | 月费 (DUST) | 年费 (DUST) | 存储折扣 | 免费 AI 次数/月 |
+| 等级 | 月费 (USDT) | 年费 (USDT) | 存储折扣 | 免费 AI 次数/月 |
 |------|------------|------------|---------|----------------|
 | Free | 0 | - | 0% | 3 |
 | Bronze | 5 | 50 | 10% | 10 |
@@ -23,6 +23,8 @@ Stardust 占卜平台的会员订阅管理模块，提供 6 级会员体系、DU
 | Diamond | 500 | 5000 | 50% | 无限 |
 
 > 年费享受约 16.7% 折扣（10 个月价格）
+> 
+> **注意**：会员费用以 USDT 计价，支付时调用 pricing 模块实时换算为等值 DUST
 
 ## 核心功能
 
@@ -206,7 +208,7 @@ ProviderVerified { provider, verified }
 
 ```toml
 [dependencies]
-pallet-membership = { path = "../membership", default-features = false }
+pallet-divination-membership = { path = "../membership", default-features = false }
 ```
 
 ## License

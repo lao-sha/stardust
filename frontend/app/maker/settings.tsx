@@ -12,7 +12,6 @@ import {
   TouchableOpacity,
   TextInput,
   Switch,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -20,6 +19,7 @@ import { useMakerStore } from '@/stores/maker.store';
 import { MakerService, ApplicationStatus } from '@/services/maker.service';
 import { PremiumSlider } from '@/features/maker/components';
 import { PageHeader } from '@/components/PageHeader';
+import { Card, LoadingSpinner } from '@/components/common';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -67,7 +67,7 @@ export default function SettingsPage() {
   if (isLoading && !makerApp) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#B2955D" />
+        <LoadingSpinner text="加载中..." />
       </View>
     );
   }
@@ -91,7 +91,7 @@ export default function SettingsPage() {
         {/* 服务状态 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>服务状态</Text>
-          <View style={styles.card}>
+          <Card style={styles.section}>
             <View style={styles.switchRow}>
               <View>
                 <Text style={styles.switchLabel}>
@@ -108,13 +108,13 @@ export default function SettingsPage() {
                 thumbColor="#FFFFFF"
               />
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 溢价设置 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>溢价设置</Text>
-          <View style={styles.card}>
+          <Card style={styles.section}>
             <PremiumSlider
               label="买入溢价 (Bridge)"
               value={buyPremiumBps}
@@ -131,13 +131,13 @@ export default function SettingsPage() {
                 setHasChanges(true);
               }}
             />
-          </View>
+          </Card>
         </View>
 
         {/* 交易限额 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>交易限额</Text>
-          <View style={styles.card}>
+          <Card style={styles.section}>
             <Text style={styles.inputLabel}>最小交易金额</Text>
             <View style={styles.inputContainer}>
               <TextInput
@@ -151,13 +151,13 @@ export default function SettingsPage() {
               />
               <Text style={styles.inputSuffix}>USD</Text>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 收款信息 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>收款信息</Text>
-          <View style={styles.card}>
+          <Card style={styles.section}>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>TRON 地址</Text>
               <View style={styles.infoValueContainer}>
@@ -196,13 +196,13 @@ export default function SettingsPage() {
                 </View>
               </>
             )}
-          </View>
+          </Card>
         </View>
 
         {/* 做市商信息 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>做市商信息</Text>
-          <View style={styles.card}>
+          <Card style={styles.section}>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>做市商 ID</Text>
               <Text style={styles.infoValue}>#{makerApp.id}</Text>
@@ -224,7 +224,7 @@ export default function SettingsPage() {
                 {new Date(makerApp.createdAt * 1000).toLocaleDateString('zh-CN')}
               </Text>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 保存按钮 */}
@@ -292,10 +292,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginLeft: 4,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+  section: {
+    marginBottom: 16,
   },
   switchRow: {
     flexDirection: 'row',

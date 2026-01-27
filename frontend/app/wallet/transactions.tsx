@@ -12,12 +12,12 @@ import {
   Pressable,
   ScrollView,
   RefreshControl,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useWalletStore } from '@/stores';
 import { BottomNavBar } from '@/components/BottomNavBar';
+import { Card, LoadingSpinner, EmptyState } from '@/components/common';
+import { useWallet, useAsync } from '@/hooks';
 
 // 主题色
 const THEME_COLOR = '#B2955D';
@@ -36,19 +36,77 @@ interface Transaction {
 
 export default function TransactionsPage() {
   const router = useRouter();
-  const { address } = useWalletStore();
+  const { address } = useWallet();
+  const { execute, isLoading } = useAsync();
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadTransactions = async () => {
-    // TODO: 从链上获取真实交易记录
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await execute(async () => {
+      try {
+        const { getApi } = await import('@/lib/api');
+        const api = getApi();
+        
+        if (!address) {
+          setTransactions([]);
+          return;
+        }
 
-    // 模拟空交易记录
-    setTransactions([]);
-    setIsLoading(false);
+        // 从链上获取交易记录
+        // 监听 system.events 并解析转账事件
+        const events = await api.query.system.events();
+        const txList: Transaction[] = [];
+
+        // 获取最近的区块头
+        const header = await api.rpc.chain.getHeader();
+        const currentBlock = header.number.toNumber();
+
+        // 查询最近 1000 个区块的事件（可调整）
+        const blocksToCheck = Math.min(1000, currentBlock);
+        
+        for (let i = 0; i < blocksToCheck; i++) {
+          const blockNumber = currentBlock - i;
+          const blockHash = await api.rpc.chain.getBlockHash(blockNumber);
+          const blockEvents = await api.query.system.events.at(blockHash);
+          const block = await api.rpc.chain.getBlock(blockHash);
+          
+          for (const record of blockEvents) {
+            const { event } = record;
+            
+            // 检查是否是转账事件
+            if (api.events.balances.Transfer.is(event)) {
+              const [from, to, amount] = event.data;
+              const fromStr = from.toString();
+              const toStr = to.toString();
+              
+              // 只记录与当前地址相关的交易
+              if (fromStr === address || toStr === address) {
+                const timestamp = block.block.header.number.toNumber();
+                txList.push({
+                  id: `${blockNumber}-${record.phase.toString()}`,
+                  type: fromStr === address ? 'send' : 'receive',
+                  amount: (Number(amount.toBigInt()) / 1e12).toFixed(4),
+                  address: fromStr === address ? toStr : fromStr,
+                  timestamp: new Date(timestamp * 6000), // 假设 6 秒出块
+                  status: 'confirmed',
+                  hash: blockHash.toHex(),
+                });
+              }
+            }
+          }
+          
+          // 限制返回数量
+          if (txList.length >= 50) break;
+        }
+
+        setTransactions(txList);
+      } catch (error) {
+        console.error('Load transactions error:', error);
+        // API 未连接时显示空列表
+        setTransactions([]);
+      }
+    });
   };
 
   const handleRefresh = async () => {
@@ -113,16 +171,13 @@ export default function TransactionsPage() {
       </View>
 
       {/* 钱包地址 */}
-      <View style={styles.addressCard}>
+      <Card style={styles.addressCard}>
         <Text style={styles.addressLabel}>当前地址</Text>
         <Text style={styles.addressText}>{formatAddress(address || '')}</Text>
-      </View>
+      </Card>
 
       {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={THEME_COLOR} />
-          <Text style={styles.loadingText}>加载中...</Text>
-        </View>
+        <LoadingSpinner text="加载中..." />
       ) : transactions.length === 0 ? (
         <ScrollView
           contentContainerStyle={styles.emptyContainer}
@@ -135,13 +190,11 @@ export default function TransactionsPage() {
             />
           }
         >
-          <View style={styles.emptyIconCircle}>
-            <Ionicons name="receipt-outline" size={48} color={THEME_COLOR} />
-          </View>
-          <Text style={styles.emptyTitle}>暂无交易记录</Text>
-          <Text style={styles.emptySubtitle}>
-            您的交易记录将显示在这里
-          </Text>
+          <EmptyState
+            icon="receipt-outline"
+            title="暂无交易记录"
+            description="您的交易记录将显示在这里"
+          />
           <Pressable
             style={styles.refreshButton}
             onPress={handleRefresh}
@@ -239,16 +292,8 @@ const styles = StyleSheet.create({
     width: 32,
   },
   addressCard: {
-    backgroundColor: '#FFF',
     marginHorizontal: 16,
     marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
   },
   addressLabel: {
     fontSize: 12,
@@ -260,47 +305,11 @@ const styles = StyleSheet.create({
     color: '#333',
     fontFamily: 'monospace',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 15,
-    color: '#999',
-  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
-  },
-  emptyIconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#FFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    marginBottom: 24,
   },
   refreshButton: {
     flexDirection: 'row',

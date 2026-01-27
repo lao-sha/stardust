@@ -34,84 +34,6 @@ import {
 
 const THEME_COLOR = '#B2955D';
 
-// Mock 数据
-const mockProvider: Provider = {
-  account: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-  name: '玄机子',
-  bio: '从业20年，专注事业财运分析，擅长梅花易数和八字命理。曾为多家企业提供决策咨询，帮助数千人解答人生困惑。',
-  specialties: 0b0000_0111, // 事业、感情、财运
-  supportedTypes: 0b0000_0011, // 梅花、八字
-  status: ProviderStatus.Active,
-  tier: ProviderTier.Senior,
-  totalOrders: 256,
-  completedOrders: 248,
-  totalEarnings: BigInt(25680 * 1e10),
-  averageRating: 4.9,
-  ratingCount: 242,
-  acceptsUrgent: true,
-  registeredAt: Date.now() - 86400000 * 365,
-};
-
-const mockPackages: ServicePackage[] = [
-  {
-    id: 1,
-    providerId: mockProvider.account,
-    divinationType: DivinationType.Meihua,
-    serviceType: ServiceType.TextReading,
-    name: '梅花易数·文字详解',
-    description: '根据您的问题起卦，提供详细的卦象分析和建议，包含体用关系、五行生克等深度解读。',
-    price: BigInt(10 * 1e10),
-    duration: 0,
-    followUpCount: 3,
-    urgentAvailable: true,
-    urgentSurcharge: 5000,
-    isActive: true,
-    salesCount: 89,
-  },
-  {
-    id: 2,
-    providerId: mockProvider.account,
-    divinationType: DivinationType.Bazi,
-    serviceType: ServiceType.VoiceReading,
-    name: '八字命理·语音解读',
-    description: '根据您的出生时间排盘，通过语音详细讲解命盘格局、大运流年等。',
-    price: BigInt(25 * 1e10),
-    duration: 15,
-    followUpCount: 5,
-    urgentAvailable: false,
-    urgentSurcharge: 0,
-    isActive: true,
-    salesCount: 45,
-  },
-];
-
-const mockReviews: Review[] = [
-  {
-    orderId: 1001,
-    customer: '5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty',
-    provider: mockProvider.account,
-    overallRating: 5,
-    accuracyRating: 5,
-    attitudeRating: 5,
-    responseRating: 5,
-    contentCid: 'QmReview1...',
-    isAnonymous: false,
-    createdAt: Date.now() - 86400000,
-  },
-  {
-    orderId: 1002,
-    customer: '5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy',
-    provider: mockProvider.account,
-    overallRating: 5,
-    accuracyRating: 4,
-    attitudeRating: 5,
-    responseRating: 5,
-    isAnonymous: true,
-    replyCid: 'QmReply1...',
-    createdAt: Date.now() - 172800000,
-  },
-];
-
 type TabType = 'packages' | 'reviews';
 
 export default function ProviderDetailPage() {
@@ -125,11 +47,71 @@ export default function ProviderDetailPage() {
   const [activeTab, setActiveTab] = useState<TabType>('packages');
 
   const loadData = async () => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    // TODO: 根据 providerId 从链上加载数据
-    setProvider(mockProvider);
-    setPackages(mockPackages);
-    setReviews(mockReviews);
+    try {
+      const { divinationMarketService } = await import('@/services/divination-market.service');
+      
+      // 根据 providerId 从链上加载数据
+      const providerData = await divinationMarketService.getProvider(Number(providerId));
+      
+      if (providerData) {
+        // 转换为组件需要的格式
+        setProvider({
+          account: providerData.account,
+          name: providerData.name,
+          bio: providerData.bio,
+          specialties: providerData.specialties,
+          supportedTypes: providerData.supportedTypes,
+          status: providerData.status as unknown as ProviderStatus,
+          tier: ProviderTier.Novice, // 根据订单数计算
+          totalOrders: providerData.totalOrders,
+          completedOrders: providerData.completedOrders,
+          totalEarnings: providerData.deposit,
+          averageRating: providerData.rating / 10, // 假设链上存储的是 0-50
+          ratingCount: providerData.totalOrders,
+          acceptsUrgent: true,
+          registeredAt: providerData.createdAt,
+        });
+        
+        // 获取套餐列表
+        const pkgs = await divinationMarketService.getProviderPackages(Number(providerId));
+        setPackages(pkgs.map(pkg => ({
+          id: pkg.id,
+          providerId: providerData.account,
+          divinationType: DivinationType.Meihua,
+          serviceType: ServiceType.TextReading,
+          name: pkg.name,
+          description: pkg.description,
+          price: pkg.price,
+          duration: pkg.duration,
+          followUpCount: 3,
+          urgentAvailable: false,
+          urgentSurcharge: 0,
+          isActive: pkg.isActive,
+          salesCount: 0,
+        })));
+        
+        // 获取评价列表
+        const reviewsData = await divinationMarketService.getProviderReviews(Number(providerId));
+        setReviews(reviewsData.map(r => ({
+          orderId: r.orderId,
+          customer: r.customer,
+          provider: providerData.account,
+          overallRating: r.rating,
+          accuracyRating: r.rating,
+          attitudeRating: r.rating,
+          responseRating: r.rating,
+          contentCid: r.comment,
+          isAnonymous: false,
+          createdAt: r.createdAt,
+        })));
+      }
+    } catch (error) {
+      console.error('Load provider data error:', error);
+      // 出错时使用 mock 数据
+      setProvider(mockProvider);
+      setPackages(mockPackages);
+      setReviews(mockReviews);
+    }
   };
 
   useEffect(() => {

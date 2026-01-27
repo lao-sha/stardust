@@ -12,11 +12,12 @@ use sp_runtime::{BuildStorage, traits::Hash};
 use sp_core::H256;
 
 type Block = frame_system::mocking::MockBlock<Test>;
+type BlockNumberFor<T> = <T as frame_system::Config>::BlockNumber;
 
 // 简单的测试用随机数生成器
 pub struct TestRandomness;
-impl RandomnessTrait<H256, BlockNumberFor<Test>> for TestRandomness {
-    fn random(subject: &[u8]) -> (H256, BlockNumberFor<Test>) {
+impl RandomnessTrait<H256, u64> for TestRandomness {
+    fn random(subject: &[u8]) -> (H256, u64) {
         let block_number = frame_system::Pallet::<Test>::block_number();
         let hash = sp_io::hashing::blake2_256(subject);
         (H256::from(hash), block_number)
@@ -28,6 +29,7 @@ frame_support::construct_runtime!(
     pub enum Test {
         System: frame_system,
         Timestamp: pallet_timestamp,
+        Balances: pallet_balances,
         ChatGroup: pallet_chat_group,
     }
 );
@@ -35,6 +37,7 @@ frame_support::construct_runtime!(
 #[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
     type Block = Block;
+    type AccountData = pallet_balances::AccountData<u128>;
 }
 
 impl pallet_timestamp::Config for Test {
@@ -44,12 +47,30 @@ impl pallet_timestamp::Config for Test {
     type WeightInfo = ();
 }
 
+impl pallet_balances::Config for Test {
+    type MaxLocks = ConstU32<50>;
+    type MaxReserves = ConstU32<50>;
+    type ReserveIdentifier = [u8; 8];
+    type Balance = u128;
+    type RuntimeEvent = RuntimeEvent;
+    type DustRemoval = ();
+    type ExistentialDeposit = ConstU128<1>;
+    type AccountStore = System;
+    type WeightInfo = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ConstU32<0>;
+    type RuntimeHoldReason = ();
+    type RuntimeFreezeReason = ();
+}
+
 parameter_types! {
     pub const GroupPalletId: PalletId = PalletId(*b"py/group");
+    pub const TreasuryAccountId: u64 = 999;
 }
 
 impl pallet_chat_group::Config for Test {
     type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
     type Randomness = TestRandomness;
     type TimeProvider = Timestamp;
     type MaxGroupNameLen = ConstU32<64>;
@@ -63,15 +84,12 @@ impl pallet_chat_group::Config for Test {
     type PalletId = GroupPalletId;
     type MessageRateLimit = ConstU32<60>;
     type GroupCreationCooldown = ConstU64<10>;
-    type WeightInfo = ();
-
-    // 举报系统配置
-    type MinReportDeposit = ConstU128<10_000_000_000_000>; // 10 DUST
-    type ReportTimeout = ConstU64<100>; // 100 blocks
-    type ReportCooldownPeriod = ConstU64<10>; // 10 blocks
-    type ReportWithdrawWindow = ConstU64<5>; // 5 blocks
-    type ContentCommittee = EnsureRoot<u64>;
+    type GroupDeposit = ConstU128<50_000_000_000_000_000_000>; // 50 DUST 兜底
+    type GroupDepositUsd = ConstU64<5_000_000>; // 5 USDT
+    type DepositCalculator = (); // 使用空实现，返回兜底值
+    type TreasuryAccount = TreasuryAccountId;
     type GovernanceOrigin = EnsureRoot<u64>;
+    type WeightInfo = ();
 }
 
 /// 构建测试外部环境

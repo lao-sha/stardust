@@ -9,8 +9,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -19,14 +17,17 @@ import { useWalletStore } from '@/stores/wallet.store';
 import { MakerService } from '@/services/maker.service';
 import { PageHeader } from '@/components/PageHeader';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
+import { Card, Button } from '@/components/common';
+import { useAsync } from '@/hooks';
 
 // 押金要求 (USD)
 const DEPOSIT_REQUIRED_USD = 1000;
 
 export default function DepositPage() {
   const router = useRouter();
-  const { lockDeposit, dustPrice, fetchDustPrice, isSubmitting, txStatus, error, clearError } = useMakerStore();
+  const { lockDeposit, dustPrice, fetchDustPrice, txStatus, error, clearError } = useMakerStore();
   const { currentWallet, balance } = useWalletStore();
+  const { execute, isLoading } = useAsync();
 
   const [showTxDialog, setShowTxDialog] = useState(false);
 
@@ -48,17 +49,15 @@ export default function DepositPage() {
       return;
     }
 
-    try {
-      setShowTxDialog(true);
+    setShowTxDialog(true);
+    await execute(async () => {
       await lockDeposit();
       // 成功后跳转到下一步
       setTimeout(() => {
         setShowTxDialog(false);
         router.replace('/maker/apply/info');
       }, 1500);
-    } catch (err) {
-      // 错误已在 store 中处理
-    }
+    });
   };
 
   const handleCloseTxDialog = () => {
@@ -74,7 +73,7 @@ export default function DepositPage() {
         <Text style={styles.stepTitle}>第一步：锁定押金</Text>
 
         {/* 押金要求 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <Text style={styles.cardTitle}>押金要求</Text>
           <View style={styles.amountContainer}>
             <Text style={styles.usdAmount}>{DEPOSIT_REQUIRED_USD} USD</Text>
@@ -85,10 +84,10 @@ export default function DepositPage() {
               (按当前价格 {dustPrice.toFixed(4)} USD/DUST)
             </Text>
           </View>
-        </View>
+        </Card>
 
         {/* 账户余额 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <Text style={styles.cardTitle}>您的余额</Text>
           <Text style={styles.balanceAmount}>
             {MakerService.formatDustAmount(balanceBigInt)} DUST
@@ -98,10 +97,10 @@ export default function DepositPage() {
               {isBalanceSufficient ? '✅ 余额充足' : '❌ 余额不足'}
             </Text>
           </View>
-        </View>
+        </Card>
 
         {/* 押金说明 */}
-        <View style={styles.infoCard}>
+        <Card style={[styles.section, styles.infoCard]}>
           <Text style={styles.infoIcon}>💡</Text>
           <Text style={styles.infoTitle}>押金说明</Text>
           <View style={styles.infoList}>
@@ -110,20 +109,15 @@ export default function DepositPage() {
             <Text style={styles.infoItem}>• 提现需要 7 天冷却期</Text>
             <Text style={styles.infoItem}>• 违规行为将扣除押金</Text>
           </View>
-        </View>
+        </Card>
 
         {/* 锁定按钮 */}
-        <TouchableOpacity
-          style={[styles.submitButton, (!isBalanceSufficient || isSubmitting) && styles.submitButtonDisabled]}
+        <Button
+          title="锁定押金"
           onPress={handleLockDeposit}
-          disabled={!isBalanceSufficient || isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitButtonText}>锁定押金</Text>
-          )}
-        </TouchableOpacity>
+          loading={isLoading}
+          disabled={!isBalanceSufficient || isLoading}
+        />
       </ScrollView>
 
       {/* 交易状态弹窗 */}
@@ -152,10 +146,7 @@ const styles = StyleSheet.create({
     color: '#1C1C1E',
     marginBottom: 20,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+  section: {
     marginBottom: 16,
   },
   cardTitle: {
@@ -212,9 +203,6 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     backgroundColor: '#FFF9E6',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
   },
   infoIcon: {
     fontSize: 20,
@@ -233,20 +221,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666666',
     lineHeight: 20,
-  },
-  submitButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#C9C9C9',
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

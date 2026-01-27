@@ -23,6 +23,21 @@ import {
   setAlias,
   type LocalKeystore,
 } from '@/lib/keystore';
+import { getApi, isApiReady } from '@/lib/api';
+import type { AccountInfo } from '@/types/substrate.types';
+
+/** 账户信息的 JSON 表示 */
+interface AccountInfoJson {
+  nonce?: number;
+  consumers?: number;
+  providers?: number;
+  sufficients?: number;
+  data?: {
+    free?: string | number;
+    reserved?: string | number;
+    frozen?: string | number;
+  };
+}
 
 /**
  * 账户资产信息
@@ -142,10 +157,25 @@ export const useWalletStore = create<WalletState>()((set, get) => ({
       const accounts: AccountAsset[] = await Promise.all(
         keystores.map(async (ks: LocalKeystore) => {
           const alias = await getAlias(ks.address) || `钱包 ${ks.address.slice(0, 6)}`;
+          
+          // 查询链上余额
+          let balance = '0.0000';
+          try {
+            if (isApiReady()) {
+              const api = getApi();
+              const accountInfo = await api.query.system.account(ks.address);
+              const data = accountInfo.toJSON() as AccountInfoJson;
+              const freeBalance = BigInt(data?.data?.free ?? 0);
+              balance = (Number(freeBalance) / 1e12).toFixed(4);
+            }
+          } catch (balanceError) {
+            console.warn('[Wallet] Failed to fetch balance for', ks.address, balanceError);
+          }
+          
           return {
             address: ks.address,
             alias,
-            balance: '0.0000', // TODO: 查询链上余额
+            balance,
             isCurrentAccount: ks.address === currentAddr,
           };
         })

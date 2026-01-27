@@ -568,7 +568,10 @@ fn submit_interpretation_works() {
         assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
-            b"QmAnswerCid".to_vec()
+            b"QmAnswerCid".to_vec(),
+            vec![],  // imgs
+            vec![],  // vids
+            vec![]   // docs
         ));
 
         let order = DivinationMarket::orders(0).unwrap();
@@ -676,7 +679,10 @@ fn follow_up_works() {
         assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
-            b"Answer".to_vec()
+            b"Answer".to_vec(),
+            vec![],
+            vec![],
+            vec![]
         ));
 
         // 提交追问
@@ -744,7 +750,10 @@ fn follow_up_exhausted_fails() {
         assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
-            b"Answer".to_vec()
+            b"Answer".to_vec(),
+            vec![],
+            vec![],
+            vec![]
         ));
 
         assert_noop!(
@@ -794,7 +803,10 @@ fn submit_review_works() {
         assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
-            b"Answer".to_vec()
+            b"Answer".to_vec(),
+            vec![],
+            vec![],
+            vec![]
         ));
 
         // 提交评价
@@ -863,7 +875,10 @@ fn invalid_rating_fails() {
         assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
-            b"Answer".to_vec()
+            b"Answer".to_vec(),
+            vec![],
+            vec![],
+            vec![]
         ));
 
         // 评分 0 无效
@@ -918,7 +933,10 @@ fn reply_review_works() {
         assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
-            b"Answer".to_vec()
+            b"Answer".to_vec(),
+            vec![],
+            vec![],
+            vec![]
         ));
         assert_ok!(DivinationMarket::submit_review(
             RuntimeOrigin::signed(1),
@@ -983,7 +1001,10 @@ fn request_withdrawal_works() {
         assert_ok!(DivinationMarket::submit_interpretation(
             RuntimeOrigin::signed(10),
             0,
-            b"Answer".to_vec()
+            b"Answer".to_vec(),
+            vec![],
+            vec![],
+            vec![]
         ));
 
         let provider_initial = Balances::free_balance(10);
@@ -2004,6 +2025,9 @@ fn setup_provider_for_report(provider: u64) {
     ));
 }
 
+// ==================== 举报功能测试（已移除，待重新实现） ====================
+// 以下测试引用了已删除的举报功能，暂时注释掉
+/*
 /// 测试提交举报
 #[test]
 fn submit_report_works() {
@@ -2572,3 +2596,4 @@ fn report_type_configurations() {
     assert_eq!(ReportType::Drugs.credit_deduction(), 500);
     assert_eq!(ReportType::Superstition.credit_deduction(), 50);
 }
+*/

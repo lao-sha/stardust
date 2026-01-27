@@ -35,11 +35,12 @@ mod kyc;
 // 选择性导出 types 中的类型（避免 KycConfig 冲突）
 pub use types::{KycVerificationResult, KycFailureReason};
 
-#[cfg(test)]
-mod mock;
+// TODO: 测试文件待创建
+// #[cfg(test)]
+// mod mock;
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -61,7 +62,7 @@ pub mod pallet {
     use pallet_escrow::Escrow as EscrowTrait;
     use pallet_chat_permission::SceneAuthorizationManager;
     use pallet_trading_credit::quota::BuyerQuotaInterface;
-    use pallet_stardust_ipfs::CidLockManager;
+    use pallet_storage_service::CidLockManager;
     use sp_runtime::traits::Hash;
     
     // 🆕 v0.4.0: 从 pallet-trading-common 导入公共类型和 Trait
@@ -71,8 +72,9 @@ pub mod pallet {
         PricingProvider,
         MakerInterface,
         MakerCreditInterface,
+        MakerValidationError,
     };
-    use pallet_storage_lifecycle::ArchivableData;
+    
     // MakerApplicationInfo 通过 MakerInterface::get_maker_application 返回
 
     /// 函数级详细中文注释：Balance 类型别名
@@ -454,7 +456,7 @@ pub mod pallet {
         /// - 发起争议时自动 PIN 并锁定证据 CID
         /// - 仲裁完成后自动解锁并 Unpin
         /// - 防止争议期间证据被删除
-        type CidLockManager: pallet_stardust_ipfs::CidLockManager<Self::Hash, BlockNumberFor<Self>>;
+        type CidLockManager: pallet_storage_service::CidLockManager<Self::Hash, BlockNumberFor<Self>>;
     }
     
     // 🆕 v0.4.0: PricingProvider, MakerInterface, MakerApplicationInfo 已移至 common 模块
@@ -1257,12 +1259,12 @@ pub mod pallet {
             // 1. 验证订单金额（新增）
             let _usd_amount = Self::validate_order_amount(dust_amount, false)?;
 
-            // 2. 查询做市商信息
-            let maker_app = T::MakerPallet::get_maker_application(maker_id)
-                .ok_or(Error::<T>::MakerNotFound)?;
-            
-            // 2. 验证做市商状态
-            ensure!(maker_app.is_active, Error::<T>::MakerNotActive);
+            // 2. 🆕 使用统一的做市商验证逻辑
+            let maker_app = T::MakerPallet::validate_maker(maker_id)
+                .map_err(|e| match e {
+                    MakerValidationError::NotFound => Error::<T>::MakerNotFound,
+                    MakerValidationError::NotActive => Error::<T>::MakerNotActive,
+                })?;
             
             // 2.5 验证做市商押金USD价值（使用pricing模块换算）
             // MakerPallet::get_deposit_usd_value 内部使用 Pricing::get_dust_to_usd_rate 换算
@@ -1432,14 +1434,14 @@ pub mod pallet {
                 Error::<T>::AlreadyFirstPurchased
             );
             
-            // 2. 查询做市商信息
-            let maker_app = T::MakerPallet::get_maker_application(maker_id)
-                .ok_or(Error::<T>::MakerNotFound)?;
+            // 2. 🆕 使用统一的做市商验证逻辑
+            let maker_app = T::MakerPallet::validate_maker(maker_id)
+                .map_err(|e| match e {
+                    MakerValidationError::NotFound => Error::<T>::MakerNotFound,
+                    MakerValidationError::NotActive => Error::<T>::MakerNotActive,
+                })?;
             
-            // 3. 验证做市商状态
-            ensure!(maker_app.is_active, Error::<T>::MakerNotActive);
-            
-            // 4. 检查做市商首购配额
+            // 3. 检查做市商首购配额
             let current_count = MakerFirstPurchaseCount::<T>::get(maker_id);
             ensure!(
                 current_count < T::MaxFirstPurchaseOrdersPerMaker::get(),

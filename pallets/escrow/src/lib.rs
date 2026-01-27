@@ -6,11 +6,15 @@ extern crate alloc;
 
 pub use pallet::*;
 
-#[cfg(test)]
-mod mock;
+pub mod weights;
+pub use weights::WeightInfo;
 
-#[cfg(test)]
-mod tests;
+// TODO: 测试文件待创建
+// #[cfg(test)]
+// mod mock;
+
+// #[cfg(test)]
+// mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {

@@ -10,7 +10,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -18,6 +17,7 @@ import { useMakerStore, selectIsMaker, selectUnappealedPenaltiesCount } from '@/
 import { MakerService } from '@/services/maker.service';
 import { MakerStatusCard, DepositStatus } from '@/features/maker/components';
 import { PageHeader } from '@/components/PageHeader';
+import { Card, LoadingSpinner } from '@/components/common';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -48,7 +48,7 @@ export default function DashboardPage() {
   if (isLoading && !makerApp) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#B2955D" />
+        <LoadingSpinner text="加载中..." />
       </View>
     );
   }
@@ -111,7 +111,7 @@ export default function DashboardPage() {
         {/* 今日统计 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>📊 今日统计</Text>
-          <View style={styles.statsCard}>
+          <Card style={styles.section}>
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{todayStats.orders}</Text>
               <Text style={styles.statLabel}>订单数</Text>
@@ -126,7 +126,7 @@ export default function DashboardPage() {
               <Text style={[styles.statValue, styles.statValueGreen]}>+{todayStats.earnings}</Text>
               <Text style={styles.statLabel}>收益 (USDT)</Text>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 快捷操作 */}
@@ -275,12 +275,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#B2955D',
   },
-  // 统计卡片
-  statsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    flexDirection: 'row',
+  section: {
+    marginBottom: 16,
   },
   statItem: {
     flex: 1,

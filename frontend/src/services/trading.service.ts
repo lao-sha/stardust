@@ -8,6 +8,21 @@ import CryptoJS from 'crypto-js';
 import { getApi } from '@/lib/api';
 import { signAndSend, getCurrentSignerAddress } from '@/lib/signer';
 import type { Maker, Order, MarketStats, BuyerCreditInfo, KycStatus } from '@/stores/trading.store';
+import type { ChainEvent, DispatchError } from '@/types/substrate.types';
+import {
+  parseOtcOrderState,
+  parseDisputeStatus,
+  parseDisputeResolution,
+  parseBoolean,
+  parseString,
+} from '@/types/type-guards';
+import { createErrorHandler } from '@/lib/error-handler';
+import { APIConnectionError, TransactionError, NetworkError } from '@/lib/errors';
+import { createLogger } from '@/lib/logger';
+
+// 创建模块级日志器和错误处理器
+const log = createLogger('TradingService');
+const errorHandler = createErrorHandler('TradingService');
 
 /**
  * Trading Service
@@ -21,7 +36,7 @@ export class TradingService {
     try {
       return getApi();
     } catch (error) {
-      throw new Error('API not initialized. Please initialize API first.');
+      throw new APIConnectionError('API 未初始化，请先连接到区块链节点', error);
     }
   }
 
@@ -66,8 +81,8 @@ export class TradingService {
 
       return makers;
     } catch (error) {
-      console.error('[TradingService] Get makers error:', error);
-      throw error;
+      errorHandler.handle(error, 'getMakers');
+      throw error instanceof APIConnectionError ? error : new NetworkError('获取做市商列表失败', error);
     }
   }
 
@@ -100,7 +115,7 @@ export class TradingService {
         rating: this.calculateMakerRating(data.usersServed.toNumber()),
       };
     } catch (error) {
-      console.error('[TradingService] Get maker error:', error);
+      log.error('Get maker error:', error);
       throw error;
     }
   }
@@ -145,14 +160,14 @@ export class TradingService {
       for (const { event } of events) {
         if (api.events.otcOrder.FirstPurchaseCreated.is(event)) {
           const [orderId] = event.data;
-          console.log('[Trading] First purchase created, order ID:', orderId.toString());
+          log.info('First purchase created, order ID:', orderId.toString());
           return orderId.toNumber();
         }
       }
 
       throw new Error('Order ID not found in events');
     } catch (error) {
-      console.error('[Trading] Create first purchase error:', error);
+      log.error('Create first purchase error:', error);
       throw error;
     }
   }
@@ -184,14 +199,14 @@ export class TradingService {
       for (const { event } of events) {
         if (api.events.otcOrder.OrderCreated.is(event)) {
           const [orderId] = event.data;
-          console.log('[Trading] Order created, order ID:', orderId.toString());
+          log.info('Order created, order ID:', orderId.toString());
           return orderId.toNumber();
         }
       }
 
       throw new Error('Order ID not found in events');
     } catch (error) {
-      console.error('[Trading] Create order error:', error);
+      log.error('Create order error:', error);
       throw error;
     }
   }
@@ -210,9 +225,9 @@ export class TradingService {
     try {
       const tx = api.tx.otcOrder.markPaid(orderId, tronTxHash || null);
       await signAndSend(api, tx, accountAddress, onStatusChange);
-      console.log('[Trading] Mark paid success');
+      log.info('Mark paid success');
     } catch (error) {
-      console.error('[Trading] Mark paid error:', error);
+      log.error('Mark paid error:', error);
       throw error;
     }
   }
@@ -230,9 +245,9 @@ export class TradingService {
     try {
       const tx = api.tx.otcOrder.cancelOrder(orderId);
       await signAndSend(api, tx, accountAddress, onStatusChange);
-      console.log('[Trading] Cancel order success');
+      log.info('Cancel order success');
     } catch (error) {
-      console.error('[Trading] Cancel order error:', error);
+      log.error('Cancel order error:', error);
       throw error;
     }
   }
@@ -267,9 +282,9 @@ export class TradingService {
       // 使用新的 initiateDispute 方法
       const tx = api.tx.otcOrder.initiateDispute(orderId, reason, evidenceHash);
       await signAndSend(api, tx, accountAddress, onStatusChange);
-      console.log('[Trading] Dispute initiated:', orderId);
+      log.info('Dispute initiated:', orderId);
     } catch (error) {
-      console.error('[Trading] Dispute error:', error);
+      log.error('Dispute error:', error);
       throw error;
     }
   }
@@ -303,9 +318,9 @@ export class TradingService {
 
       const tx = api.tx.otcOrder.respondDispute(orderId, response, evidenceHash);
       await signAndSend(api, tx, accountAddress, onStatusChange);
-      console.log('[Trading] Dispute response submitted:', orderId);
+      log.info('Dispute response submitted:', orderId);
     } catch (error) {
-      console.error('[Trading] Respond dispute error:', error);
+      log.error('Respond dispute error:', error);
       throw error;
     }
   }
@@ -339,24 +354,24 @@ export class TradingService {
 
       return {
         initiator: data.initiator.toString(),
-        reason: data.reason.toHuman() as string,
+        reason: parseString(data.reason.toHuman()),
         initiatorEvidence: data.initiatorEvidence.isSome
           ? data.initiatorEvidence.unwrap().toHex()
           : undefined,
         respondentResponse: data.respondentResponse.isSome
-          ? (data.respondentResponse.unwrap().toHuman() as string)
+          ? parseString(data.respondentResponse.unwrap().toHuman())
           : undefined,
         respondentEvidence: data.respondentEvidence.isSome
           ? data.respondentEvidence.unwrap().toHex()
           : undefined,
-        status: data.status.toString() as any,
+        status: parseDisputeStatus(data.status.toString()),
         deadline: data.deadline.toNumber(),
         resolution: data.resolution.isSome
-          ? (data.resolution.unwrap().toString() as any)
+          ? parseDisputeResolution(data.resolution.unwrap().toString())
           : undefined,
       };
     } catch (error) {
-      console.error('[Trading] Get dispute error:', error);
+      log.error('Get dispute error:', error);
       return null;
     }
   }
@@ -386,12 +401,12 @@ export class TradingService {
         amount: data.amount.toBigInt(),
         createdAt: data.createdAt.toNumber(),
         expireAt: data.expireAt.toNumber(),
-        makerTronAddress: data.makerTronAddress.toHuman() as string,
-        state: data.state.toString() as any,
-        isFirstPurchase: data.isFirstPurchase.isTrue,
+        makerTronAddress: parseString(data.makerTronAddress.toHuman()),
+        state: parseOtcOrderState(data.state.toString()),
+        isFirstPurchase: parseBoolean(data.isFirstPurchase),
       };
     } catch (error) {
-      console.error('[TradingService] Get order error:', error);
+      log.error('Get order error:', error);
       throw error;
     }
   }
@@ -418,9 +433,9 @@ export class TradingService {
           amount: data.amount.toBigInt(),
           createdAt: data.createdAt.toNumber(),
           expireAt: data.expireAt.toNumber(),
-          makerTronAddress: data.makerTronAddress.toHuman() as string,
-          state: data.state.toString() as any,
-          isFirstPurchase: data.isFirstPurchase.isTrue,
+          makerTronAddress: parseString(data.makerTronAddress.toHuman()),
+          state: parseOtcOrderState(data.state.toString()),
+          isFirstPurchase: parseBoolean(data.isFirstPurchase),
         });
       }
     });
@@ -450,7 +465,7 @@ export class TradingService {
 
       return orders;
     } catch (error) {
-      console.error('[TradingService] Get order history error:', error);
+      log.error('Get order history error:', error);
       throw error;
     }
   }
@@ -494,7 +509,7 @@ export class TradingService {
         totalVolume: stats.totalVolume.toBigInt(),
       };
     } catch (error) {
-      console.error('[TradingService] Get market stats error:', error);
+      log.error('Get market stats error:', error);
       // 返回默认值
       return {
         otcPrice: 0.1,
@@ -529,7 +544,7 @@ export class TradingService {
       const stats = await this.getMarketStats();
       return stats.weightedPrice;
     } catch (error) {
-      console.error('[TradingService] Get dust price error:', error);
+      log.error('Get dust price error:', error);
       return 0.1; // 默认价格
     }
   }
@@ -559,20 +574,54 @@ export class TradingService {
       }
 
       const data = credit.unwrap();
+      const riskScore = data.riskScore.toNumber();
+      const completedOrders = data.completedOrders.toNumber();
 
       return {
-        riskScore: data.riskScore.toNumber(),
-        level: this.getCreditLevel(data.riskScore.toNumber()),
+        riskScore,
+        level: this.getCreditLevel(riskScore),
         maxAmount: data.maxAmount.toNumber() / 1_000_000,
         concurrentOrders: data.concurrentOrders.toNumber(),
         maxConcurrentOrders: data.maxConcurrentOrders.toNumber(),
-        completedOrders: data.completedOrders.toNumber(),
-        trend: 'stable', // TODO: 计算趋势
+        completedOrders,
+        trend: this.calculateCreditTrend(riskScore, completedOrders),
       };
     } catch (error) {
-      console.error('[TradingService] Get buyer credit error:', error);
+      log.error('Get buyer credit error:', error);
       throw error;
     }
+  }
+
+  /**
+   * 计算信用趋势
+   * 基于风险分数和完成订单数判断趋势
+   */
+  private calculateCreditTrend(
+    riskScore: number,
+    completedOrders: number
+  ): 'up' | 'down' | 'stable' {
+    // 新用户（订单少于3个）趋势为稳定
+    if (completedOrders < 3) {
+      return 'stable';
+    }
+
+    // 风险分数越低越好
+    // 低风险（<300）且有足够订单 -> 上升趋势
+    if (riskScore < 300 && completedOrders >= 10) {
+      return 'up';
+    }
+
+    // 高风险（>600）-> 下降趋势
+    if (riskScore > 600) {
+      return 'down';
+    }
+
+    // 中等风险但订单多 -> 可能上升
+    if (riskScore < 500 && completedOrders >= 20) {
+      return 'up';
+    }
+
+    return 'stable';
   }
 
   /**
@@ -595,7 +644,7 @@ export class TradingService {
       const hasCompleted = await api.query.otcOrder.firstPurchaseCompleted(buyer);
       return hasCompleted.isTrue;
     } catch (error) {
-      console.error('[TradingService] Check first purchase error:', error);
+      log.error('Check first purchase error:', error);
       return false;
     }
   }
@@ -641,14 +690,56 @@ export class TradingService {
         };
       }
 
-      // TODO: 检查认证等级
+      // 检查认证等级（judgements）
+      const identityData = identity.unwrap();
+      const judgements = identityData.judgements;
+      
+      // 获取所需的最低认证等级
+      const requiredLevel = config.requiredLevel?.toNumber?.() ?? 1;
+      
+      // 检查是否有有效的认证判定
+      let hasValidJudgement = false;
+      let highestLevel = 0;
+      
+      for (const [, judgement] of judgements) {
+        // 判定类型：Unknown, FeePaid, Reasonable, KnownGood, OutOfDate, LowQuality, Erroneous
+        const judgementType = judgement.toString();
+        
+        if (judgementType === 'Reasonable') {
+          highestLevel = Math.max(highestLevel, 1);
+          hasValidJudgement = true;
+        } else if (judgementType === 'KnownGood') {
+          highestLevel = Math.max(highestLevel, 2);
+          hasValidJudgement = true;
+        } else if (judgementType === 'LowQuality' || judgementType === 'Erroneous') {
+          // 负面判定
+          return {
+            status: 'Failed' as KycStatus,
+            failureReason: 'QualityIssue',
+          };
+        }
+      }
+
+      if (!hasValidJudgement) {
+        return {
+          status: 'Failed' as KycStatus,
+          failureReason: 'NoValidJudgement',
+        };
+      }
+
+      if (highestLevel < requiredLevel) {
+        return {
+          status: 'Failed' as KycStatus,
+          failureReason: 'InsufficientLevel',
+        };
+      }
 
       return {
         status: 'Passed' as KycStatus,
         failureReason: null,
       };
     } catch (error) {
-      console.error('[TradingService] Check KYC error:', error);
+      log.error('Check KYC error:', error);
       throw error;
     }
   }

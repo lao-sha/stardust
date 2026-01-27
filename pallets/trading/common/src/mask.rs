@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn test_mask_id_card() {
         assert_eq!(mask_id_card("110101199001011234"), b"1101**********1234");
-        assert_eq!(mask_id_card("110101900101123"), b"1101*******0123");
+        assert_eq!(mask_id_card("110101900101123"), b"1101*******1123"); // 15位身份证：前4+7星+后4
         assert_eq!(mask_id_card("1234567"), b"*******");
     }
 

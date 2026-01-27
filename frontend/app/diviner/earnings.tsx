@@ -2,7 +2,7 @@
  * 收益管理页面
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,52 +16,58 @@ import {
 } from 'react-native';
 import { PageHeader } from '@/components/PageHeader';
 import { BottomNavBar } from '@/components/BottomNavBar';
+import { UnlockWalletDialog } from '@/components/UnlockWalletDialog';
+import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
 import { WithdrawalRecord } from '@/features/diviner';
+import { divinationMarketService } from '@/services/divination-market.service';
+import { useWalletStore } from '@/stores/wallet.store';
+import { isSignerUnlocked, unlockWalletForSigning } from '@/lib/signer';
 
 const THEME_COLOR = '#B2955D';
 
-// Mock 数据
-const mockWithdrawals: WithdrawalRecord[] = [
-  {
-    id: 1,
-    provider: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-    amount: BigInt(500 * 1e10),
-    createdAt: Date.now() - 86400000 * 3,
-    completedAt: Date.now() - 86400000 * 3,
-  },
-  {
-    id: 2,
-    provider: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-    amount: BigInt(800 * 1e10),
-    createdAt: Date.now() - 86400000 * 10,
-    completedAt: Date.now() - 86400000 * 10,
-  },
-];
-
 export default function EarningsPage() {
+  const { address } = useWalletStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [availableBalance, setAvailableBalance] = useState(BigInt(0));
   const [totalEarnings, setTotalEarnings] = useState(BigInt(0));
   const [withdrawals, setWithdrawals] = useState<WithdrawalRecord[]>([]);
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [showUnlockDialog, setShowUnlockDialog] = useState(false);
+  const [showTxStatus, setShowTxStatus] = useState(false);
+  const [txStatus, setTxStatus] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const loadData = async () => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    setAvailableBalance(BigInt(1250 * 1e10));
-    setTotalEarnings(BigInt(15680 * 1e10));
-    setWithdrawals(mockWithdrawals);
-  };
+  const loadData = useCallback(async () => {
+    if (!address) return;
+
+    try {
+      const providerData = await divinationMarketService.getProviderByAccount(address);
+      if (providerData) {
+        // 从链上获取收益数据
+        const earnings = await divinationMarketService.getProviderEarnings(providerData.id);
+        setAvailableBalance(earnings.availableBalance);
+        setTotalEarnings(earnings.totalEarnings);
+        
+        // 获取提现记录
+        const withdrawalHistory = await divinationMarketService.getWithdrawalHistory(providerData.id);
+        setWithdrawals(withdrawalHistory);
+      }
+    } catch (error) {
+      console.error('Load earnings data error:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [address]);
 
   useEffect(() => {
-    loadData().finally(() => setLoading(false));
-  }, []);
+    loadData();
+  }, [loadData]);
 
-  const onRefresh = async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
+    loadData();
   };
 
   const formatDust = (amount: bigint) => (Number(amount) / 1e10).toFixed(2);
@@ -71,39 +77,55 @@ export default function EarningsPage() {
     return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
   };
 
-  const handleWithdraw = async () => {
+  const handleWithdraw = () => {
     const amount = parseFloat(withdrawAmount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert('提示', '请输入有效的提现金额');
       return;
     }
 
-    const amountBigInt = BigInt(Math.floor(amount * 1e10));
+    const amountBigInt = BigInt(Math.floor(amount * 1e12)); // DUST 有 12 位小数
     if (amountBigInt > availableBalance) {
       Alert.alert('提示', '提现金额超过可用余额');
       return;
     }
 
-    setSubmitting(true);
+    if (!isSignerUnlocked()) {
+      setShowUnlockDialog(true);
+      return;
+    }
+
+    executeWithdraw(amountBigInt);
+  };
+
+  const executeWithdraw = async (amountBigInt: bigint) => {
+    setShowTxStatus(true);
+    setTxStatus('正在提交提现申请...');
+
     try {
-      // TODO: 调用链上提现方法
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await divinationMarketService.requestWithdrawal(amountBigInt, (status) => setTxStatus(status));
 
-      setAvailableBalance(prev => prev - amountBigInt);
-      setWithdrawals(prev => [{
-        id: Date.now(),
-        provider: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-        amount: amountBigInt,
-        createdAt: Date.now(),
-        completedAt: Date.now(),
-      }, ...prev]);
+      setTxStatus('提现申请已提交！');
       setWithdrawAmount('');
-
-      Alert.alert('成功', `已提现 ${amount} DUST 到您的钱包`);
+      setTimeout(() => {
+        setShowTxStatus(false);
+        loadData();
+      }, 1500);
     } catch (error: any) {
+      setShowTxStatus(false);
       Alert.alert('提现失败', error.message || '请稍后重试');
-    } finally {
-      setSubmitting(false);
+    }
+  };
+
+  const handleWalletUnlocked = async (password: string) => {
+    try {
+      await unlockWalletForSigning(password);
+      setShowUnlockDialog(false);
+      const amount = parseFloat(withdrawAmount);
+      const amountBigInt = BigInt(Math.floor(amount * 1e12));
+      await executeWithdraw(amountBigInt);
+    } catch (error: any) {
+      Alert.alert('解锁失败', error.message || '密码错误');
     }
   };
 
@@ -196,6 +218,18 @@ export default function EarningsPage() {
           )}
         </View>
       </ScrollView>
+
+      <UnlockWalletDialog
+        visible={showUnlockDialog}
+        onClose={() => setShowUnlockDialog(false)}
+        onUnlock={handleWalletUnlocked}
+      />
+
+      <TransactionStatusDialog
+        visible={showTxStatus}
+        status={txStatus}
+        onClose={() => setShowTxStatus(false)}
+      />
 
       <BottomNavBar activeTab="profile" />
     </View>

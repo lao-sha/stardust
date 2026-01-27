@@ -2,7 +2,6 @@
 //!
 //! 实现 `DivinationModule` trait，接入通用 OCW + TEE 架构。
 
-use crate::types::*;
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::pallet_prelude::*;
 use pallet_divination_ocw_tee::{

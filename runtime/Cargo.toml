@@ -48,6 +48,7 @@ pallet-ziwei = { workspace = true }
 pallet-xiaoliuren = { workspace = true }
 pallet-daliuren = { workspace = true }
 pallet-tarot = { workspace = true }
+pallet-divination-membership = { workspace = true }
 # TEE Privacy pallet
 pallet-tee-privacy = { workspace = true }
 # Chat pallets
@@ -67,13 +68,17 @@ pallet-trading-otc = { workspace = true }
 # Escrow, Referral, IPFS pallets
 pallet-escrow = { workspace = true }
 pallet-referral = { workspace = true }
-pallet-stardust-ipfs = { workspace = true }
+pallet-storage-service = { workspace = true }
 # Evidence pallet
 pallet-evidence = { workspace = true }
 # Arbitration pallet
 pallet-arbitration = { workspace = true }
 # Storage lifecycle pallet
 pallet-storage-lifecycle = { workspace = true }
+# Matchmaking pallets
+pallet-matchmaking-membership = { workspace = true }
+pallet-matchmaking-profile = { workspace = true }
+pallet-matchmaking-common = { workspace = true }
 scale-info = { features = ["derive", "serde"], workspace = true }
 serde_json = { workspace = true, default-features = false, features = ["alloc"] }
 sp-api = { version = "40.0.0", workspace = true }
@@ -132,6 +137,7 @@ std = [
 	"pallet-xiaoliuren/std",
 	"pallet-daliuren/std",
 	"pallet-tarot/std",
+	"pallet-divination-membership/std",
 	# TEE Privacy pallet std
 	"pallet-tee-privacy/std",
 	# Chat pallets std
@@ -151,13 +157,14 @@ std = [
 	# Escrow, Referral, IPFS pallets std
 	"pallet-escrow/std",
 	"pallet-referral/std",
-	"pallet-stardust-ipfs/std",
+	"pallet-storage-service/std",
 	# Evidence pallet std
 	"pallet-evidence/std",
 	# Arbitration pallet std
 	"pallet-arbitration/std",
 	# Storage lifecycle pallet std
 	"pallet-storage-lifecycle/std",
+	"pallet-matchmaking-membership/std",
 	"scale-info/std",
 	"serde_json/std",
 	"sp-api/std",
@@ -203,6 +210,7 @@ runtime-benchmarks = [
 	"pallet-xiaoliuren/runtime-benchmarks",
 	"pallet-daliuren/runtime-benchmarks",
 	"pallet-tarot/runtime-benchmarks",
+	"pallet-divination-membership/runtime-benchmarks",
 	# TEE Privacy pallet benchmarks
 	"pallet-tee-privacy/runtime-benchmarks",
 	# Chat pallets benchmarks
@@ -223,6 +231,8 @@ runtime-benchmarks = [
 	"pallet-evidence/runtime-benchmarks",
 	# Arbitration pallet benchmarks
 	"pallet-arbitration/runtime-benchmarks",
+	# Matchmaking pallet benchmarks
+	"pallet-matchmaking-membership/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
 ]
 
@@ -253,6 +263,7 @@ try-runtime = [
 	"pallet-xiaoliuren/try-runtime",
 	"pallet-daliuren/try-runtime",
 	"pallet-tarot/try-runtime",
+	"pallet-divination-membership/try-runtime",
 	# TEE Privacy pallet try-runtime
 	"pallet-tee-privacy/try-runtime",
 	# Chat pallets try-runtime
@@ -273,6 +284,8 @@ try-runtime = [
 	"pallet-evidence/try-runtime",
 	# Arbitration pallet try-runtime
 	# Note: pallet-arbitration does not have try-runtime feature
+	# Matchmaking pallet try-runtime
+	"pallet-matchmaking-membership/try-runtime",
 	"sp-runtime/try-runtime",
 ]
 

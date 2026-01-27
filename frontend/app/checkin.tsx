@@ -16,6 +16,8 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomNavBar } from '@/components/BottomNavBar';
+import { Card, Button } from '@/components/common';
+import { useAsync } from '@/hooks';
 
 // 主题色
 const THEME_COLOR = '#B2955D';
@@ -34,29 +36,32 @@ const CHECKIN_REWARDS = [
 
 export default function CheckinPage() {
   const router = useRouter();
+  const { execute, isLoading } = useAsync();
   const [checkedDays, setCheckedDays] = useState(0);
   const [todayChecked, setTodayChecked] = useState(false);
   const [totalReward, setTotalReward] = useState(0);
 
   // 处理签到
-  const handleCheckin = () => {
+  const handleCheckin = async () => {
     if (todayChecked) {
       Alert.alert('提示', '今日已签到，明天再来吧！');
       return;
     }
 
-    const nextDay = (checkedDays % 7) + 1;
-    const reward = CHECKIN_REWARDS.find(r => r.day === nextDay)?.reward || 1;
+    await execute(async () => {
+      const nextDay = (checkedDays % 7) + 1;
+      const reward = CHECKIN_REWARDS.find(r => r.day === nextDay)?.reward || 1;
 
-    setCheckedDays(prev => prev + 1);
-    setTodayChecked(true);
-    setTotalReward(prev => prev + reward);
+      setCheckedDays(prev => prev + 1);
+      setTodayChecked(true);
+      setTotalReward(prev => prev + reward);
 
-    Alert.alert(
-      '签到成功！',
-      `恭喜获得 ${reward} DUST 代币\n\n连续签到 ${nextDay} 天`,
-      [{ text: '太棒了', style: 'default' }]
-    );
+      Alert.alert(
+        '签到成功！',
+        `恭喜获得 ${reward} DUST 代币\n\n连续签到 ${nextDay} 天`,
+        [{ text: '太棒了', style: 'default' }]
+      );
+    });
   };
 
   // 获取当前周期的天数
@@ -75,7 +80,7 @@ export default function CheckinPage() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* 签到状态卡片 */}
-        <View style={styles.statusCard}>
+        <Card style={styles.statusCard}>
           <View style={styles.statusHeader}>
             <View style={styles.statusIcon}>
               <Ionicons name="gift" size={32} color="#FFF" />
@@ -90,20 +95,14 @@ export default function CheckinPage() {
             </View>
           </View>
 
-          <Pressable
-            style={[styles.checkinButton, todayChecked && styles.checkinButtonDisabled]}
+          <Button
+            title={todayChecked ? '已签到' : '立即签到'}
             onPress={handleCheckin}
-          >
-            <Ionicons
-              name={todayChecked ? 'checkmark-circle' : 'gift-outline'}
-              size={24}
-              color="#FFF"
-            />
-            <Text style={styles.checkinButtonText}>
-              {todayChecked ? '已签到' : '立即签到'}
-            </Text>
-          </Pressable>
-        </View>
+            loading={isLoading}
+            disabled={todayChecked || isLoading}
+            icon={todayChecked ? 'checkmark-circle' : 'gift-outline'}
+          />
+        </Card>
 
         {/* 7天签到奖励 */}
         <View style={styles.rewardSection}>
@@ -149,7 +148,7 @@ export default function CheckinPage() {
         {/* 签到规则 */}
         <View style={styles.rulesSection}>
           <Text style={styles.sectionTitle}>签到规则</Text>
-          <View style={styles.rulesCard}>
+          <Card>
             <View style={styles.ruleItem}>
               <Ionicons name="checkmark-circle-outline" size={18} color={THEME_COLOR} />
               <Text style={styles.ruleText}>每日可签到一次，领取 DUST 代币奖励</Text>
@@ -166,7 +165,7 @@ export default function CheckinPage() {
               <Ionicons name="checkmark-circle-outline" size={18} color={THEME_COLOR} />
               <Text style={styles.ruleText}>签到奖励将自动存入您的钱包账户</Text>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 底部提示 */}
@@ -220,8 +219,6 @@ const styles = StyleSheet.create({
   },
   statusCard: {
     backgroundColor: THEME_COLOR,
-    borderRadius: 16,
-    padding: 20,
     marginBottom: 20,
   },
   statusHeader: {
@@ -250,26 +247,6 @@ const styles = StyleSheet.create({
   statusSubtitle: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.8)',
-  },
-  checkinButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 12,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  checkinButtonDisabled: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  checkinButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#FFF',
   },
   rewardSection: {
     marginBottom: 20,
@@ -331,12 +308,6 @@ const styles = StyleSheet.create({
   },
   rulesSection: {
     marginBottom: 20,
-  },
-  rulesCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
   },
   ruleItem: {
     flexDirection: 'row',

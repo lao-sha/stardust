@@ -19,7 +19,7 @@ pub use pallet::*;
 use codec::{Decode, Encode};
 use frame_support::pallet_prelude::*;
 use sp_runtime::traits::Saturating;
-use sp_std::{marker::PhantomData, vec::Vec};
+use sp_std::marker::PhantomData;
 
 /// 可归档数据 Trait
 ///
@@ -137,7 +137,7 @@ pub struct ArchiveBatch {
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_system::pallet_prelude::*;
+    
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);

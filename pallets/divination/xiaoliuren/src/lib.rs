@@ -43,6 +43,9 @@
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 pub mod algorithm;
 pub mod interpretation;
 pub mod ocw_tee;

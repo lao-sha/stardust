@@ -84,12 +84,6 @@ impl pallet_timestamp::Config for Test {
 parameter_types! {
     /// 国库账户
     pub const TreasuryAccount: u64 = 100;
-    /// 每 KB 存储押金（测试值：100）
-    pub const StorageDepositPerKb: u128 = 100;
-    /// 最小存储押金（测试值：10）
-    pub const MinStorageDeposit: u128 = 10;
-    /// 最大存储押金（测试值：100_000_000）
-    pub const MaxStorageDeposit: u128 = 100_000_000;
 }
 
 /// 测试用随机数生成器
@@ -117,12 +111,7 @@ impl pallet_qimen::Config for Test {
     type TreasuryAccount = TreasuryAccount;
     type AiOracleOrigin = EnsureRoot<u64>;
     type MaxCidLen = ConstU32<64>;
-    /// 加密数据最大长度（512 bytes）
     type MaxEncryptedLen = ConstU32<512>;
-    // 存储押金相关配置
-    type StorageDepositPerKb = StorageDepositPerKb;
-    type MinStorageDeposit = MinStorageDeposit;
-    type MaxStorageDeposit = MaxStorageDeposit;
 }
 
 /// 测试账户 ID

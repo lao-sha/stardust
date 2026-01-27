@@ -15,6 +15,44 @@ import type {
   FRIEND_REQUEST_EXPIRY_BLOCKS,
 } from '@/features/contacts/types';
 
+/** Codec 类型接口 */
+interface CodecValue {
+  toNumber(): number;
+  toString(): string;
+  toHuman(): unknown;
+  toUtf8?(): string;
+  isSome?: boolean;
+  isNone?: boolean;
+  unwrap?(): CodecValue;
+}
+
+/** 联系人数据接口 */
+interface ContactData {
+  alias: { isSome: boolean; unwrap(): CodecValue };
+  groups: CodecValue[];
+  friendStatus: CodecValue;
+  addedAt: CodecValue;
+  updatedAt: CodecValue;
+}
+
+/** 分组数据接口 */
+interface GroupData {
+  memberCount: CodecValue;
+  createdAt: CodecValue;
+}
+
+/** 黑名单数据接口 */
+interface BlockedData {
+  reason: { isSome: boolean; unwrap(): CodecValue };
+  blockedAt: CodecValue;
+}
+
+/** 好友申请数据接口 */
+interface FriendRequestData {
+  message: { isSome: boolean; unwrap(): CodecValue };
+  requestedAt: CodecValue;
+}
+
 export class ContactsService {
   private api: ApiPromise | null = null;
   private myAddress: string;
@@ -44,10 +82,10 @@ export class ContactsService {
       ]);
 
     return {
-      contactCount: (contactCount as any).toNumber(),
-      groupCount: (groupCount as any).toNumber(),
-      blacklistCount: (blacklistCount as any).toNumber(),
-      pendingRequestCount: (pendingRequestCount as any).toNumber(),
+      contactCount: (contactCount as CodecValue).toNumber(),
+      groupCount: (groupCount as CodecValue).toNumber(),
+      blacklistCount: (blacklistCount as CodecValue).toNumber(),
+      pendingRequestCount: (pendingRequestCount as CodecValue).toNumber(),
     };
   }
 
@@ -112,7 +150,7 @@ export class ContactsService {
 
     for (const [key, value] of entries) {
       const contactAddr = key.args[1].toString();
-      const data = (value as any).unwrap();
+      const data = (value as { unwrap(): ContactData }).unwrap();
 
       // 解析好友状态
       const friendStatusStr = data.friendStatus.toString();
@@ -130,8 +168,8 @@ export class ContactsService {
 
       contacts.push({
         address: contactAddr,
-        alias: data.alias.isSome ? data.alias.unwrap().toUtf8() : undefined,
-        groups: data.groups.map((g: any) => g.toUtf8()),
+        alias: data.alias.isSome ? data.alias.unwrap().toUtf8?.() : undefined,
+        groups: data.groups.map((g) => g.toUtf8?.() ?? g.toString()),
         friendStatus,
         addedAt: data.addedAt.toNumber(),
         updatedAt: data.updatedAt.toNumber(),
@@ -151,9 +189,9 @@ export class ContactsService {
       this.myAddress,
       contactAddress
     );
-    if ((result as any).isNone) return null;
+    if ((result as { isNone?: boolean }).isNone) return null;
 
-    const data = (result as any).unwrap();
+    const data = (result as { unwrap(): ContactData }).unwrap();
     const friendStatusStr = data.friendStatus.toString();
     let friendStatus: FriendStatus;
     switch (friendStatusStr) {
@@ -169,8 +207,8 @@ export class ContactsService {
 
     return {
       address: contactAddress,
-      alias: data.alias.isSome ? data.alias.unwrap().toUtf8() : undefined,
-      groups: data.groups.map((g: any) => g.toUtf8()),
+      alias: data.alias.isSome ? data.alias.unwrap().toUtf8?.() : undefined,
+      groups: data.groups.map((g) => g.toUtf8?.() ?? g.toString()),
       friendStatus,
       addedAt: data.addedAt.toNumber(),
       updatedAt: data.updatedAt.toNumber(),
@@ -238,7 +276,7 @@ export class ContactsService {
 
     for (const [key, value] of entries) {
       const name = key.args[1].toHuman() as string;
-      const data = (value as any).unwrap();
+      const data = (value as { unwrap(): GroupData }).unwrap();
 
       groups.push({
         name,
@@ -260,9 +298,9 @@ export class ContactsService {
       this.myAddress,
       groupName
     );
-    if ((result as any).isNone) return [];
+    if ((result as { isNone?: boolean }).isNone) return [];
 
-    return (result as any).unwrap().map((addr: any) => addr.toString());
+    return (result as { unwrap(): CodecValue[] }).unwrap().map((addr) => addr.toString());
   }
 
   // ========== 黑名单管理 ==========
@@ -300,11 +338,11 @@ export class ContactsService {
 
     for (const [key, value] of entries) {
       const blockedAddr = key.args[1].toString();
-      const data = (value as any).unwrap();
+      const data = (value as { unwrap(): BlockedData }).unwrap();
 
       blockedUsers.push({
         address: blockedAddr,
-        reason: data.reason.isSome ? data.reason.unwrap().toUtf8() : undefined,
+        reason: data.reason.isSome ? data.reason.unwrap().toUtf8?.() : undefined,
         blockedAt: data.blockedAt.toNumber(),
       });
     }
@@ -322,7 +360,7 @@ export class ContactsService {
       this.myAddress,
       account
     );
-    return (result as any).isSome;
+    return (result as { isSome?: boolean }).isSome ?? false;
   }
 
   // ========== 好友申请 ==========
@@ -376,7 +414,7 @@ export class ContactsService {
 
     for (const [key, value] of entries) {
       const requesterAddr = key.args[1].toString();
-      const data = (value as any).unwrap();
+      const data = (value as { unwrap(): FriendRequestData }).unwrap();
       const requestedAt = data.requestedAt.toNumber();
       const expiresAt = requestedAt + expiryBlocks;
       const isExpired = currentBlock > expiresAt;
@@ -386,7 +424,7 @@ export class ContactsService {
       requests.push({
         requester: requesterAddr,
         message: data.message.isSome
-          ? data.message.unwrap().toUtf8()
+          ? data.message.unwrap().toUtf8?.()
           : undefined,
         requestedAt,
         expiresAt,
@@ -407,7 +445,7 @@ export class ContactsService {
     const count = await this.api.query.contacts.pendingRequestCount(
       this.myAddress
     );
-    return (count as any).toNumber();
+    return (count as CodecValue).toNumber();
   }
 }
 

@@ -103,12 +103,6 @@ parameter_types! {
     pub const AiInterpretationFee: Balance = 10_000_000_000_000; // 10 DUST (12 decimals)
     /// 国库账户
     pub const TreasuryAccountId: u64 = 999;
-    /// 每 KB 存储押金（测试值：100）
-    pub const StorageDepositPerKb: u128 = 100;
-    /// 最小存储押金（测试值：10）
-    pub const MinStorageDeposit: u128 = 10;
-    /// 最大存储押金（测试值：100_000_000）
-    pub const MaxStorageDeposit: u128 = 100_000_000;
 }
 
 /// AI 预言机权限来源（测试用：允许 root）
@@ -146,10 +140,6 @@ impl pallet_tarot::Config for Test {
     type AiInterpretationFee = AiInterpretationFee;
     type TreasuryAccount = TreasuryAccount;
     type AiOracleOrigin = MockAiOracleOrigin;
-    // 存储押金相关配置
-    type StorageDepositPerKb = StorageDepositPerKb;
-    type MinStorageDeposit = MinStorageDeposit;
-    type MaxStorageDeposit = MaxStorageDeposit;
 }
 
 /// 测试账户定义

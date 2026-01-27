@@ -11,6 +11,7 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { PageHeader } from '@/components/PageHeader';
@@ -113,18 +114,34 @@ export default function OrdersListPage() {
     router.push(`/diviner/orders/${orderId}` as any);
   };
 
-  const handleAcceptOrder = (orderId: number) => {
-    // TODO: 接单逻辑
-    setOrders(prev =>
-      prev.map(o => (o.id === orderId ? { ...o, status: OrderStatus.Accepted, acceptedAt: Date.now() } : o))
-    );
+  const handleAcceptOrder = async (orderId: number) => {
+    try {
+      const { divinationMarketService } = await import('@/services/divination-market.service');
+      await divinationMarketService.acceptOrder(orderId, (status) => {
+        console.log('Accept order status:', status);
+      });
+      // 更新本地状态
+      setOrders(prev =>
+        prev.map(o => (o.id === orderId ? { ...o, status: OrderStatus.Accepted, acceptedAt: Date.now() } : o))
+      );
+    } catch (error: any) {
+      Alert.alert('接单失败', error.message || '请稍后重试');
+    }
   };
 
-  const handleRejectOrder = (orderId: number) => {
-    // TODO: 拒单逻辑
-    setOrders(prev =>
-      prev.map(o => (o.id === orderId ? { ...o, status: OrderStatus.Cancelled } : o))
-    );
+  const handleRejectOrder = async (orderId: number) => {
+    try {
+      const { divinationMarketService } = await import('@/services/divination-market.service');
+      await divinationMarketService.rejectOrder(orderId, '暂时无法接单', (status) => {
+        console.log('Reject order status:', status);
+      });
+      // 更新本地状态
+      setOrders(prev =>
+        prev.map(o => (o.id === orderId ? { ...o, status: OrderStatus.Cancelled } : o))
+      );
+    } catch (error: any) {
+      Alert.alert('拒单失败', error.message || '请稍后重试');
+    }
   };
 
   if (loading) {

@@ -61,11 +61,6 @@ impl frame_system::Config for Test {
     type PostTransactions = ();
 }
 
-impl frame_system::offchain::SendTransactionTypes<RuntimeCall> for Test {
-    type Extrinsic = Extrinsic;
-    type OverarchingCall = RuntimeCall;
-}
-
 impl pallet_pricing::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type MaxPriceDeviation = MaxPriceDeviation;

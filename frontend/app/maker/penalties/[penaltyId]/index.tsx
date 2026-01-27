@@ -10,12 +10,12 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useMakerStore } from '@/stores/maker.store';
 import { MakerService, PenaltyRecord } from '@/services/maker.service';
 import { PageHeader } from '@/components/PageHeader';
+import { Card, LoadingSpinner, Button } from '@/components/common';
 
 export default function PenaltyDetailPage() {
   const router = useRouter();
@@ -38,7 +38,7 @@ export default function PenaltyDetailPage() {
   if (!penalty) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#B2955D" />
+        <LoadingSpinner text="加载中..." />
       </View>
     );
   }
@@ -90,7 +90,7 @@ export default function PenaltyDetailPage() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* 基本信息 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.penaltyId}>扣除编号: #P{penalty.id}</Text>
@@ -102,10 +102,10 @@ export default function PenaltyDetailPage() {
               </Text>
             </View>
           </View>
-        </View>
+        </Card>
 
         {/* 扣除金额 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <Text style={styles.cardTitle}>扣除金额</Text>
           <Text style={styles.amountDust}>
             {MakerService.formatDustAmount(penalty.deductedAmount)} DUST
@@ -119,10 +119,10 @@ export default function PenaltyDetailPage() {
               {new Date(penalty.deductedAt * 1000).toLocaleString('zh-CN')}
             </Text>
           </View>
-        </View>
+        </Card>
 
         {/* 关联信息 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <Text style={styles.cardTitle}>关联信息</Text>
           {penalty.penaltyType.type === 'OtcTimeout' && (
             <View style={styles.infoRow}>
@@ -150,14 +150,14 @@ export default function PenaltyDetailPage() {
               </Text>
             </View>
           )}
-        </View>
+        </Card>
 
         {/* 扣除原因 */}
-        <View style={styles.infoCard}>
+        <Card style={[styles.section, styles.infoCard]}>
           <Text style={styles.infoIcon}>💡</Text>
           <Text style={styles.infoTitle}>扣除原因</Text>
           <Text style={styles.infoDesc}>{getReasonDetail()}</Text>
-        </View>
+        </Card>
 
         {/* 申诉信息 */}
         {canAppeal && (
@@ -165,12 +165,10 @@ export default function PenaltyDetailPage() {
             <Text style={styles.appealDeadline}>
               申诉截止: {appealDeadline.toLocaleString('zh-CN')} ({daysLeft}天后)
             </Text>
-            <TouchableOpacity
-              style={styles.appealButton}
+            <Button
+              title="发起申诉"
               onPress={() => router.push(`/maker/penalties/${penalty.id}/appeal`)}
-            >
-              <Text style={styles.appealButtonText}>发起申诉</Text>
-            </TouchableOpacity>
+            />
           </View>
         )}
 
@@ -218,10 +216,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+  section: {
     marginBottom: 16,
   },
   headerRow: {
@@ -296,9 +291,6 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     backgroundColor: '#FFF9E6',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
   },
   infoIcon: {
     fontSize: 20,
@@ -323,17 +315,6 @@ const styles = StyleSheet.create({
     color: '#FF9500',
     textAlign: 'center',
     marginBottom: 12,
-  },
-  appealButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  appealButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
   appealingCard: {
     backgroundColor: '#007AFF20',

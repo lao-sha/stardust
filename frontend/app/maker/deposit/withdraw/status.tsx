@@ -10,7 +10,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -18,6 +17,8 @@ import { useMakerStore, selectCanExecuteWithdrawal } from '@/stores/maker.store'
 import { WithdrawalProgress } from '@/features/maker/components';
 import { PageHeader } from '@/components/PageHeader';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
+import { Button } from '@/components/common';
+import { useAsync } from '@/hooks';
 
 export default function WithdrawStatusPage() {
   const router = useRouter();
@@ -25,7 +26,6 @@ export default function WithdrawStatusPage() {
     withdrawalRequest,
     executeWithdrawal,
     cancelWithdrawal,
-    isSubmitting,
     txStatus,
     error,
     clearError,
@@ -33,6 +33,7 @@ export default function WithdrawStatusPage() {
   } = useMakerStore();
 
   const canExecute = useMakerStore(selectCanExecuteWithdrawal);
+  const { execute, isLoading } = useAsync();
 
   const [showTxDialog, setShowTxDialog] = useState(false);
 
@@ -49,16 +50,14 @@ export default function WithdrawStatusPage() {
         {
           text: '确定执行',
           onPress: async () => {
-            try {
-              setShowTxDialog(true);
+            setShowTxDialog(true);
+            await execute(async () => {
               await executeWithdrawal();
               setTimeout(() => {
                 setShowTxDialog(false);
                 router.replace('/maker/deposit');
               }, 1500);
-            } catch (err) {
-              // 错误已在 store 中处理
-            }
+            });
           },
         },
       ]
@@ -75,16 +74,14 @@ export default function WithdrawStatusPage() {
           text: '确定取消',
           style: 'destructive',
           onPress: async () => {
-            try {
-              setShowTxDialog(true);
+            setShowTxDialog(true);
+            await execute(async () => {
               await cancelWithdrawal();
               setTimeout(() => {
                 setShowTxDialog(false);
                 router.replace('/maker/deposit');
               }, 1500);
-            } catch (err) {
-              // 错误已在 store 中处理
-            }
+            });
           },
         },
       ]
@@ -123,31 +120,23 @@ export default function WithdrawStatusPage() {
 
         {/* 操作按钮 */}
         <View style={styles.actions}>
-          {canExecute ? (
-            <TouchableOpacity
-              style={styles.executeButton}
+          {canExecute && (
+            <Button
+              title="执行提现"
               onPress={handleExecute}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.executeButtonText}>执行提现</Text>
-              )}
-            </TouchableOpacity>
-          ) : null}
+              loading={isLoading}
+              disabled={isLoading}
+              variant="primary"
+            />
+          )}
 
-          <TouchableOpacity
-            style={styles.cancelButton}
+          <Button
+            title="取消提现"
             onPress={handleCancel}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color="#FF3B30" />
-            ) : (
-              <Text style={styles.cancelButtonText}>取消提现</Text>
-            )}
-          </TouchableOpacity>
+            loading={isLoading}
+            disabled={isLoading}
+            variant="outline"
+          />
         </View>
       </ScrollView>
 
@@ -196,29 +185,5 @@ const styles = StyleSheet.create({
   actions: {
     marginTop: 24,
     gap: 12,
-  },
-  executeButton: {
-    backgroundColor: '#4CD964',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  executeButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  cancelButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#FF3B30',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF3B30',
   },
 });

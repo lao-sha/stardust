@@ -17,6 +17,8 @@ import storage from '@/lib/storage';
 import { useMarketApi } from '@/divination/market/hooks';
 import { ProviderCard } from '@/divination/market/components/ProviderCard';
 import { LoadingSpinner, EmptyState } from '@/divination/market/components';
+import { Button } from '@/components/common';
+import { useAsync } from '@/hooks';
 import { THEME } from '@/divination/market/theme';
 import {
   SEARCH_HISTORY_KEY,
@@ -27,7 +29,8 @@ import { Provider } from '@/divination/market/types';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { loading, getProviders } = useMarketApi();
+  const { getProviders } = useMarketApi();
+  const { execute, isLoading } = useAsync();
 
   const [keyword, setKeyword] = useState('');
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
@@ -80,15 +83,12 @@ export default function SearchScreen() {
       saveSearchHistory(searchKeyword);
       setHasSearched(true);
 
-      try {
+      await execute(async () => {
         const result = await getProviders({ keyword: searchKeyword });
         setSearchResults(result);
-      } catch (err) {
-        console.error('Search error:', err);
-        setSearchResults([]);
-      }
+      });
     },
-    [getProviders]
+    [getProviders, execute]
   );
 
   const handleSubmit = () => {
@@ -182,7 +182,7 @@ export default function SearchScreen() {
           contentContainerStyle={styles.resultsContent}
           showsVerticalScrollIndicator={false}
         >
-          {loading ? (
+          {isLoading ? (
             <LoadingSpinner text="搜索中..." />
           ) : searchResults.length === 0 ? (
             <EmptyState

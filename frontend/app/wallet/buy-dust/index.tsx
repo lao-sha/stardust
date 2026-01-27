@@ -10,7 +10,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTradingStore } from '@/stores/trading.store';
@@ -22,6 +21,8 @@ import {
 } from '@/features/trading/components';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { PageHeader } from '@/components/PageHeader';
+import { Card, Button, LoadingSpinner, EmptyState } from '@/components/common';
+import { useAsync } from '@/hooks';
 import type { Maker } from '@/stores/trading.store';
 
 function BuyDustPageContent() {
@@ -39,14 +40,19 @@ function BuyDustPageContent() {
     selectMaker,
   } = useTradingStore();
 
+  const { execute, isLoading } = useAsync();
   const [showOfflineWarning, setShowOfflineWarning] = useState(false);
   const [pendingMaker, setPendingMaker] = useState<Maker | null>(null);
 
   useEffect(() => {
     // 初始化数据
-    fetchMakers();
-    fetchMarketStats();
-    checkFirstPurchaseStatus();
+    execute(async () => {
+      await Promise.all([
+        fetchMakers(),
+        fetchMarketStats(),
+        checkFirstPurchaseStatus(),
+      ]);
+    });
   }, []);
 
   const handleFirstPurchase = () => {
@@ -111,7 +117,7 @@ function BuyDustPageContent() {
         {/* 首购特惠 */}
         {isFirstPurchase && !hasCompletedFirstPurchase && (
           <View style={styles.section}>
-            <View style={styles.firstPurchaseCard}>
+            <Card style={styles.firstPurchaseCard}>
               <Text style={styles.firstPurchaseTitle}>🎁 首购特惠</Text>
               <Text style={styles.firstPurchaseDesc}>
                 首次购买固定 10 USD
@@ -119,13 +125,12 @@ function BuyDustPageContent() {
               <Text style={styles.firstPurchaseDesc}>
                 享受新用户专属价格
               </Text>
-              <TouchableOpacity
-                style={styles.firstPurchaseButton}
+              <Button
+                title="立即首购"
                 onPress={handleFirstPurchase}
-              >
-                <Text style={styles.firstPurchaseButtonText}>立即首购</Text>
-              </TouchableOpacity>
-            </View>
+                style={styles.firstPurchaseButton}
+              />
+            </Card>
           </View>
         )}
 
@@ -142,15 +147,14 @@ function BuyDustPageContent() {
             </Text>
           </View>
 
-          {loadingMakers ? (
-            <View style={styles.loading}>
-              <ActivityIndicator size="large" color="#B2955D" />
-              <Text style={styles.loadingText}>加载中...</Text>
-            </View>
+          {loadingMakers || isLoading ? (
+            <LoadingSpinner text="加载做市商列表..." />
           ) : makers.length === 0 ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>暂无可用做市商</Text>
-            </View>
+            <EmptyState
+              icon="people-outline"
+              title="暂无可用做市商"
+              description="请稍后再试"
+            />
           ) : (
             makers.map((maker) => (
               <MakerCard
@@ -227,8 +231,6 @@ const styles = StyleSheet.create({
   },
   firstPurchaseCard: {
     backgroundColor: '#FFF9F0',
-    borderRadius: 12,
-    padding: 20,
     borderWidth: 2,
     borderColor: '#B2955D',
   },
@@ -244,33 +246,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   firstPurchaseButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
     marginTop: 16,
-  },
-  firstPurchaseButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  loading: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#666666',
-    marginTop: 12,
-  },
-  empty: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#999999',
   },
   footer: {
     padding: 16,

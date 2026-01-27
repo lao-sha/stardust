@@ -27,7 +27,7 @@ frame-benchmarking = { workspace = true, optional = true }
 # 本地依赖
 pallet-trading-common = { path = "../../trading/common", default-features = false }
 
-# 注意：不集成 pallet-stardust-ipfs，直播间是临时数据，不适合 PIN
+# 注意：不集成 pallet-storage-service，直播间是临时数据，不适合 PIN
 
 [dev-dependencies]
 sp-io = { workspace = true, features = ["std"] }

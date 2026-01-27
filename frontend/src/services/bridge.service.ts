@@ -11,6 +11,44 @@ import { ApiPromise } from '@polkadot/api';
 import { getApi } from '@/lib/api';
 import { signAndSend, getCurrentSignerAddress } from '@/lib/signer';
 import { u8aToHex, hexToU8a } from '@polkadot/util';
+import { parseSwapStatus, parseNumber } from '@/types/type-guards';
+import type { SwapStatus as SwapStatusType } from '@/types/substrate.types';
+
+/** 链上兑换记录的 JSON 表示 */
+interface SwapRecordJson {
+  buyer?: string;
+  makerId?: number;
+  dustAmount?: string | number;
+  usdtAmount?: string | number;
+  buyerTronAddress?: string;
+  makerTronAddress?: string;
+  status?: string | { [key: string]: null };
+  timeInfo?: {
+    createdAt?: number;
+    completedAt?: number;
+  };
+  tronTxHash?: string;
+}
+
+/** 链上市场统计的 JSON 表示 */
+interface MarketStatsJson {
+  otcPrice?: number;
+  bridgePrice?: number;
+  weightedPrice?: number;
+  simpleAvgPrice?: number;
+  otcVolume?: string | number;
+  bridgeVolume?: string | number;
+  totalVolume?: string | number;
+}
+
+/** 链上账户数据的 JSON 表示 */
+interface AccountDataJson {
+  data?: {
+    free?: string | number;
+    reserved?: string | number;
+    frozen?: string | number;
+  };
+}
 
 /**
  * 签名状态回调
@@ -233,6 +271,62 @@ export class BridgeService {
   }
 
   /**
+   * 取消兑换（用户在做市商确认前可取消）
+   * @param swapId 兑换记录ID
+   * @param onStatusChange 状态变化回调
+   */
+  async cancelSwap(
+    swapId: number,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备取消兑换...');
+
+    const tx = api.tx.swap.cancelSwap(swapId);
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+
+    console.log('[BridgeService] Swap cancelled:', swapId);
+  }
+
+  /**
+   * 发起兑换争议
+   * @param swapId 兑换记录ID
+   * @param reason 争议原因
+   * @param evidenceCid 证据的 IPFS CID（可选）
+   * @param onStatusChange 状态变化回调
+   */
+  async disputeSwap(
+    swapId: number,
+    reason: string,
+    evidenceCid?: string,
+    onStatusChange?: StatusCallback
+  ): Promise<void> {
+    const api = this.getApi();
+    const accountAddress = getCurrentSignerAddress();
+
+    if (!accountAddress) {
+      throw new Error('No signer address available. Please unlock wallet first.');
+    }
+
+    onStatusChange?.('准备发起争议...');
+
+    const tx = api.tx.swap.disputeSwap(swapId, reason, evidenceCid || null);
+
+    onStatusChange?.('等待签名...');
+    await signAndSend(api, tx, accountAddress, onStatusChange);
+
+    console.log('[BridgeService] Swap disputed:', swapId);
+  }
+
+  /**
    * 查询用户的兑换历史记录
    * @param account 用户地址
    * @returns 兑换记录列表
@@ -247,20 +341,20 @@ export class BridgeService {
       const records: SwapRecord[] = [];
 
       for (const [key, value] of entries) {
-        const record = value.toJSON() as any;
+        const record = value.toJSON() as SwapRecordJson;
 
         // 过滤用户（作为买家）
         if (record.buyer === account) {
           records.push({
             id: parseInt(key.args[0].toString(), 10),
-            buyer: record.buyer,
-            makerId: record.makerId,
-            dustAmount: BigInt(record.dustAmount || 0),
-            usdtAmount: BigInt(record.usdtAmount || 0),
-            buyerTronAddress: record.buyerTronAddress,
-            makerTronAddress: record.makerTronAddress,
-            status: this.parseSwapStatus(record.status),
-            createdAt: record.timeInfo?.createdAt || 0,
+            buyer: record.buyer ?? '',
+            makerId: parseNumber(record.makerId),
+            dustAmount: BigInt(record.dustAmount ?? 0),
+            usdtAmount: BigInt(record.usdtAmount ?? 0),
+            buyerTronAddress: record.buyerTronAddress ?? '',
+            makerTronAddress: record.makerTronAddress ?? '',
+            status: parseSwapStatus(record.status),
+            createdAt: record.timeInfo?.createdAt ?? 0,
             completedAt: record.timeInfo?.completedAt,
             tronTxHash: record.tronTxHash,
           });
@@ -292,18 +386,18 @@ export class BridgeService {
         return null;
       }
 
-      const data = record.toJSON() as any;
+      const data = record.toJSON() as SwapRecordJson;
 
       return {
         id: swapId,
-        buyer: data.buyer,
-        makerId: data.makerId,
-        dustAmount: BigInt(data.dustAmount || 0),
-        usdtAmount: BigInt(data.usdtAmount || 0),
-        buyerTronAddress: data.buyerTronAddress,
-        makerTronAddress: data.makerTronAddress,
-        status: this.parseSwapStatus(data.status),
-        createdAt: data.timeInfo?.createdAt || 0,
+        buyer: data.buyer ?? '',
+        makerId: parseNumber(data.makerId),
+        dustAmount: BigInt(data.dustAmount ?? 0),
+        usdtAmount: BigInt(data.usdtAmount ?? 0),
+        buyerTronAddress: data.buyerTronAddress ?? '',
+        makerTronAddress: data.makerTronAddress ?? '',
+        status: parseSwapStatus(data.status),
+        createdAt: data.timeInfo?.createdAt ?? 0,
         completedAt: data.timeInfo?.completedAt,
         tronTxHash: data.tronTxHash,
       };
@@ -327,17 +421,17 @@ export class BridgeService {
 
     const unsub = await api.query.swap.makerSwapRecords(swapId, (record) => {
       if (!record.isEmpty) {
-        const data = record.toJSON() as any;
+        const data = record.toJSON() as SwapRecordJson;
         callback({
           id: swapId,
-          buyer: data.buyer,
-          makerId: data.makerId,
-          dustAmount: BigInt(data.dustAmount || 0),
-          usdtAmount: BigInt(data.usdtAmount || 0),
-          buyerTronAddress: data.buyerTronAddress,
-          makerTronAddress: data.makerTronAddress,
-          status: this.parseSwapStatus(data.status),
-          createdAt: data.timeInfo?.createdAt || 0,
+          buyer: data.buyer ?? '',
+          makerId: parseNumber(data.makerId),
+          dustAmount: BigInt(data.dustAmount ?? 0),
+          usdtAmount: BigInt(data.usdtAmount ?? 0),
+          buyerTronAddress: data.buyerTronAddress ?? '',
+          makerTronAddress: data.makerTronAddress ?? '',
+          status: parseSwapStatus(data.status),
+          createdAt: data.timeInfo?.createdAt ?? 0,
           completedAt: data.timeInfo?.completedAt,
           tronTxHash: data.tronTxHash,
         });
@@ -348,18 +442,11 @@ export class BridgeService {
   }
 
   /**
-   * 解析兑换状态
+   * 解析兑换状态（内部使用，保留向后兼容）
+   * @deprecated 使用 parseSwapStatus 替代
    */
-  private parseSwapStatus(status: any): SwapStatus {
-    if (typeof status === 'string') {
-      return status as SwapStatus;
-    }
-    // 处理枚举对象格式
-    if (status && typeof status === 'object') {
-      const key = Object.keys(status)[0];
-      return key as SwapStatus;
-    }
-    return SwapStatus.Pending;
+  private parseSwapStatus(status: unknown): SwapStatus {
+    return parseSwapStatus(status) as SwapStatus;
   }
 
   /**
@@ -381,8 +468,8 @@ export class BridgeService {
       }
 
       const stats = await api.query.tradingPricing.marketStats();
-      const data = stats.toJSON() as any;
-      return (data?.weightedPrice || 100000) / 1_000_000;
+      const data = stats.toJSON() as MarketStatsJson;
+      return (data?.weightedPrice ?? 100000) / 1_000_000;
     } catch (error) {
       console.error('[BridgeService] Get price error:', error);
       return 0.10; // 返回默认价格
@@ -399,9 +486,9 @@ export class BridgeService {
 
     try {
       const balance = await api.query.system.account(account);
-      const data = balance.toJSON() as any;
+      const data = balance.toJSON() as AccountDataJson;
 
-      return BigInt(data.data.free);
+      return BigInt(data.data?.free ?? 0);
     } catch (error) {
       console.error('[BridgeService] Get balance error:', error);
       throw error;

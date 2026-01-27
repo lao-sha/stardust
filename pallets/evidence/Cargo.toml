@@ -15,8 +15,8 @@ sp-core = { workspace = true, default-features = false }
 frame-benchmarking = { workspace = true, default-features = false, optional = true }
 log = { workspace = true, default-features = false }
 
-# 函数级中文注释：pallet-stardust-ipfs依赖用于IpfsPinner trait
-pallet-stardust-ipfs = { workspace = true, default-features = false }
+# 函数级中文注释：pallet-storage-service依赖用于IpfsPinner trait
+pallet-storage-service = { workspace = true, default-features = false }
 # 函数级中文注释：media-utils依赖用于承诺哈希计算和CID验证
 media-utils = { workspace = true, default-features = false }
 ## 已移除：pallet-authorizer 依赖
@@ -32,7 +32,7 @@ std = [
   "sp-core/std",
   "frame-benchmarking?/std",
   "log/std",
-  "pallet-stardust-ipfs/std",
+  "pallet-storage-service/std",
   "media-utils/std",
 ]
 

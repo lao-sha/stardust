@@ -9,9 +9,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -21,10 +19,13 @@ import { useMakerStore } from '@/stores/maker.store';
 import { MakerService, MakerInfoInput } from '@/services/maker.service';
 import { PageHeader } from '@/components/PageHeader';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
+import { Card, Button } from '@/components/common';
+import { useAsync } from '@/hooks';
 
 export default function InfoPage() {
   const router = useRouter();
-  const { makerApp, submitInfo, isSubmitting, txStatus, error, clearError, fetchMakerInfo } = useMakerStore();
+  const { makerApp, submitInfo, txStatus, error, clearError, fetchMakerInfo } = useMakerStore();
+  const { execute, isLoading } = useAsync();
 
   const [showTxDialog, setShowTxDialog] = useState(false);
   const [formData, setFormData] = useState<MakerInfoInput>({
@@ -110,17 +111,15 @@ export default function InfoPage() {
       return;
     }
 
-    try {
-      setShowTxDialog(true);
+    setShowTxDialog(true);
+    await execute(async () => {
       await submitInfo(formData);
       // 成功后跳转到等待审核页面
       setTimeout(() => {
         setShowTxDialog(false);
         router.replace('/maker/apply/pending');
       }, 1500);
-    } catch (err) {
-      // 错误已在 store 中处理
-    }
+    });
   };
 
   const handleCloseTxDialog = () => {
@@ -153,7 +152,7 @@ export default function InfoPage() {
         )}
 
         {/* 实名信息 */}
-        <View style={styles.section}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>实名信息</Text>
 
           <View style={styles.inputGroup}>
@@ -191,10 +190,10 @@ export default function InfoPage() {
             />
             {errors.birthday && <Text style={styles.errorText}>{errors.birthday}</Text>}
           </View>
-        </View>
+        </Card>
 
         {/* 收款信息 */}
-        <View style={styles.section}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>收款信息</Text>
 
           <View style={styles.inputGroup}>
@@ -220,10 +219,10 @@ export default function InfoPage() {
             />
             {errors.wechatId && <Text style={styles.errorText}>{errors.wechatId}</Text>}
           </View>
-        </View>
+        </Card>
 
         {/* EPAY 配置 */}
-        <View style={styles.section}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>EPAY 配置 (可选)</Text>
 
           <View style={styles.inputGroup}>
@@ -247,20 +246,15 @@ export default function InfoPage() {
             />
             {errors.epayKey && <Text style={styles.errorText}>{errors.epayKey}</Text>}
           </View>
-        </View>
+        </Card>
 
         {/* 提交按钮 */}
-        <TouchableOpacity
-          style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+        <Button
+          title="提交资料"
           onPress={handleSubmit}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitButtonText}>提交资料</Text>
-          )}
-        </TouchableOpacity>
+          loading={isLoading}
+          disabled={isLoading}
+        />
       </ScrollView>
 
       {/* 交易状态弹窗 */}
@@ -307,9 +301,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   section: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
     marginBottom: 16,
   },
   sectionTitle: {
@@ -342,20 +333,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FF3B30',
     marginTop: 4,
-  },
-  submitButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#C9C9C9',
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

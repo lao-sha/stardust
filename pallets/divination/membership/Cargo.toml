@@ -1,5 +1,5 @@
 [package]
-name = "pallet-membership"
+name = "pallet-divination-membership"
 version = "0.1.0"
 description = "Membership pallet for divination platform - subscription management, DUST rewards, and member profiles"
 authors = ["Stardust Team"]
@@ -21,6 +21,10 @@ sp-std = { workspace = true }
 sp-runtime = { workspace = true }
 sp-core = { workspace = true }
 log = { workspace = true }
+# Pricing module for USDT to DUST conversion
+pallet-trading-common = { path = "../../trading/common", default-features = false }
+# Affiliate module for UserFundingProvider and AffiliateDistributor
+pallet-affiliate = { path = "../../affiliate", default-features = false }
 
 [dev-dependencies]
 sp-io = { workspace = true }
@@ -41,6 +45,8 @@ std = [
     "sp-io/std",
     "pallet-balances/std",
     "pallet-timestamp/std",
+    "pallet-trading-common/std",
+    "pallet-affiliate/std",
     "log/std",
 ]
 runtime-benchmarks = [

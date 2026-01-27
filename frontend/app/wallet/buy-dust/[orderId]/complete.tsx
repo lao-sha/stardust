@@ -16,6 +16,7 @@ import { useTradingStore } from '@/stores/trading.store';
 import { TradingService } from '@/services/trading.service';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { PageHeader } from '@/components/PageHeader';
+import { Card, Button, LoadingSpinner } from '@/components/common';
 
 export default function CompletePage() {
   const router = useRouter();
@@ -40,9 +41,7 @@ export default function CompletePage() {
     return (
       <View style={styles.wrapper}>
         <PageHeader title="交易完成" showBack={false} />
-        <View style={styles.loading}>
-          <Text>加载中...</Text>
-        </View>
+        <LoadingSpinner text="加载订单信息..." />
         <BottomNavBar activeTab="profile" />
       </View>
     );
@@ -56,15 +55,15 @@ export default function CompletePage() {
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         {/* 成功状态 */}
         <View style={styles.section}>
-          <View style={styles.successCard}>
+          <Card style={styles.successCard}>
             <Text style={styles.successIcon}>✅</Text>
             <Text style={styles.successTitle}>交易成功</Text>
-          </View>
+          </Card>
         </View>
 
         {/* 交易详情 */}
         <View style={styles.section}>
-          <View style={styles.detailCard}>
+          <Card style={styles.detailCard}>
             <Text style={styles.detailLabel}>您已成功购买</Text>
             <Text style={styles.dustAmount}>
               {TradingService.formatDustAmount(currentOrder.qty)} DUST
@@ -79,29 +78,28 @@ export default function CompletePage() {
                 订单号: #{currentOrder.id}
               </Text>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 操作按钮 */}
         <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.walletButton}
+          <Button
+            title="查看钱包"
             onPress={handleViewWallet}
-          >
-            <Text style={styles.walletButtonText}>查看钱包</Text>
-          </TouchableOpacity>
+            style={styles.walletButton}
+          />
 
-          <TouchableOpacity
-            style={styles.continueButton}
+          <Button
+            title="继续购买"
             onPress={handleContinueBuying}
-          >
-            <Text style={styles.continueButtonText}>继续购买</Text>
-          </TouchableOpacity>
+            variant="outline"
+            style={styles.continueButton}
+          />
         </View>
 
         {/* 提示信息 */}
         <View style={styles.section}>
-          <View style={styles.tipCard}>
+          <Card style={styles.tipCard}>
             <Text style={styles.tipTitle}>💡 温馨提示</Text>
             <Text style={styles.tipText}>
               DUST 已到账，您可以在钱包中查看余额
@@ -109,7 +107,7 @@ export default function CompletePage() {
             <Text style={styles.tipText}>
               如有问题，请联系客服或查看订单历史
             </Text>
-          </View>
+          </Card>
         </View>
       </ScrollView>
 
@@ -130,18 +128,10 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: 20,
   },
-  loading: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   section: {
     padding: 16,
   },
   successCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 40,
     alignItems: 'center',
   },
   successIcon: {
@@ -154,9 +144,6 @@ const styles = StyleSheet.create({
     color: '#4CD964',
   },
   detailCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 24,
     alignItems: 'center',
   },
   detailLabel: {
@@ -178,34 +165,11 @@ const styles = StyleSheet.create({
     color: '#666666',
   },
   walletButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
     marginBottom: 12,
   },
-  walletButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  continueButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#B2955D',
-  },
-  continueButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#B2955D',
-  },
+  continueButton: {},
   tipCard: {
     backgroundColor: '#FFF9F0',
-    borderRadius: 12,
-    padding: 16,
   },
   tipTitle: {
     fontSize: 16,

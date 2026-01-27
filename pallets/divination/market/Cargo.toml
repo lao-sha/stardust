@@ -22,11 +22,13 @@ pallet-timestamp = { workspace = true }
 
 # 本地依赖 - 公共类型库
 pallet-divination-common = { path = "../common", default-features = false }
-pallet-stardust-ipfs = { path = "../../stardust-ipfs", default-features = false }
+pallet-storage-service = { path = "../../storage-service", default-features = false }
 pallet-storage-lifecycle = { workspace = true }
 pallet-trading-common = { path = "../../trading/common", default-features = false }
 # 🆕 联盟计酬系统
-pallet-affiliate = { path = "../affiliate", default-features = false }
+pallet-affiliate = { path = "../../affiliate", default-features = false }
+# 🆕 聊天权限系统（订单创建时自动授权聊天）
+pallet-chat-permission = { path = "../../chat/permission", default-features = false }
 
 [dev-dependencies]
 sp-core = { workspace = true, features = ["std"] }
@@ -45,10 +47,11 @@ std = [
     "sp-runtime/std",
     "pallet-timestamp/std",
     "pallet-divination-common/std",
-    "pallet-stardust-ipfs/std",
+    "pallet-storage-service/std",
     "pallet-storage-lifecycle/std",
     "pallet-trading-common/std",
     "pallet-affiliate/std",
+    "pallet-chat-permission/std",
 ]
 runtime-benchmarks = [
     "frame-benchmarking/runtime-benchmarks",

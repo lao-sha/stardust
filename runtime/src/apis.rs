@@ -44,7 +44,7 @@ use sp_version::RuntimeVersion;
 // Local module imports
 use super::{
 	AccountId, Aura, Balance, Bazi, Block, BlockNumber, Executive, Grandpa, InherentDataExt, Livestream, Nonce, Runtime,
-	RuntimeCall, RuntimeGenesisConfig, SessionKeys, System, TransactionPayment, TeePrivacy, VERSION,
+	RuntimeCall, RuntimeGenesisConfig, SessionKeys, StorageService, System, TransactionPayment, TeePrivacy, VERSION,
 };
 
 impl_runtime_apis! {
@@ -616,6 +616,34 @@ impl_runtime_apis! {
 		fn get_multi_key_encrypted_chart_interpretation(chart_id: u64) -> Option<pallet_bazi_chart::interpretation::FullInterpretation> {
 			// Multi-key encryption is not yet implemented, use regular encrypted chart interpretation
 			Bazi::get_encrypted_chart_interpretation(chart_id)
+		}
+	}
+
+	impl pallet_storage_service::runtime_api::StorageServiceApi<Block, AccountId, Balance> for Runtime {
+		fn get_user_funding_account(user: AccountId) -> AccountId {
+			StorageService::derive_user_funding_account(&user)
+		}
+
+		fn get_user_funding_balance(user: AccountId) -> Balance {
+			let funding_account = StorageService::derive_user_funding_account(&user);
+			pallet_balances::Pallet::<Runtime>::free_balance(&funding_account)
+		}
+
+		fn get_subject_usage(user: AccountId, domain: u8, subject_id: u64) -> Balance {
+			pallet_storage_service::SubjectUsage::<Runtime>::get((user, domain, subject_id))
+		}
+
+		fn get_user_all_usage(user: AccountId) -> Vec<(u8, u64, Balance)> {
+			// 遍历 SubjectUsage 存储，筛选出该用户的所有记录
+			pallet_storage_service::SubjectUsage::<Runtime>::iter()
+				.filter_map(|((u, domain, subject_id), amount)| {
+					if u == user {
+						Some((domain, subject_id, amount))
+					} else {
+						None
+					}
+				})
+				.collect()
 		}
 	}
 }

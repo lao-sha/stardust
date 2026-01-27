@@ -15,7 +15,7 @@ pub mod pallet {
     use frame_support::{pallet_prelude::*, BoundedVec};
     use frame_system::pallet_prelude::*;
     use pallet_escrow::pallet::Escrow as EscrowTrait;
-    use pallet_stardust_ipfs::CidLockManager;
+    use pallet_storage_service::CidLockManager;
     use pallet_trading_common::PricingProvider;
     use sp_runtime::{Saturating, SaturatedConversion};
     use pallet_storage_lifecycle::block_to_year_month;
@@ -458,7 +458,7 @@ pub mod pallet {
         /// - 发起仲裁时自动锁定相关证据 CID
         /// - 仲裁完成后自动解锁
         /// - 防止仲裁期间证据被删除
-        type CidLockManager: pallet_stardust_ipfs::CidLockManager<Self::Hash, BlockNumberFor<Self>>;
+        type CidLockManager: pallet_storage_service::CidLockManager<Self::Hash, BlockNumberFor<Self>>;
         
         /// 🆕 信用分更新器（仲裁结果反馈到信用系统）
         /// 

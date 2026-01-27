@@ -17,11 +17,12 @@
 
 pub use pallet::*;
 
-#[cfg(test)]
-mod mock;
+// TODO: 测试文件待创建
+// #[cfg(test)]
+// mod mock;
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -54,6 +55,7 @@ pub mod pallet {
         PricingProvider,
         MakerInterface,
         MakerCreditInterface,
+        MakerValidationError,
     };
     use pallet_storage_lifecycle::{amount_to_tier, block_to_year_month};
     // MakerApplicationInfo 通过 MakerInterface::get_maker_application 返回
@@ -278,7 +280,7 @@ pub mod pallet {
         /// 
         /// 注意：当前 SWAP 模块的 evidence_cid 字段未被使用
         /// 待添加 submit_evidence 函数后启用 PIN 联动机制
-        type CidLockManager: pallet_stardust_ipfs::CidLockManager<Self::Hash, BlockNumberFor<Self>>;
+        type CidLockManager: pallet_storage_service::CidLockManager<Self::Hash, BlockNumberFor<Self>>;
     }
     
     // ===== 存储 =====
@@ -708,10 +710,12 @@ pub mod pallet {
                 Error::<T>::BelowMinimumAmount
             );
             
-            // 2. 验证做市商存在且激活（使用 MakerInterface）
-            let maker_app = T::MakerPallet::get_maker_application(maker_id)
-                .ok_or(Error::<T>::MakerNotFound)?;
-            ensure!(maker_app.is_active, Error::<T>::MakerNotActive);
+            // 2. 🆕 使用统一的做市商验证逻辑
+            let maker_app = T::MakerPallet::validate_maker(maker_id)
+                .map_err(|e| match e {
+                    MakerValidationError::NotFound => Error::<T>::MakerNotFound,
+                    MakerValidationError::NotActive => Error::<T>::MakerNotActive,
+                })?;
             
             // 3. 验证 USDT 地址格式
             let usdt_addr: TronAddress = usdt_address

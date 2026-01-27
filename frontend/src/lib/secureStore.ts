@@ -1,34 +1,28 @@
 /**
- * 星尘玄鉴 - 安全存储（Web 兼容版本）
- * Web 使用 localStorage，Native 使用 expo-secure-store
+ * 星尘玄鉴 - 安全存储（跨平台版本）
+ * 
+ * Web: 使用 IndexedDB（比 localStorage 更安全）
+ * Native: 使用 expo-secure-store（硬件级安全存储）
+ * 
+ * ⚠️ 注意：此模块用于非敏感数据存储
+ * 敏感数据（如助记词）应使用 secure-storage.web.ts
  */
 
 import { Platform } from 'react-native';
+import { secureStorage } from './secure-storage-indexeddb';
 
-// Web 存储实现
+// Web 存储实现（使用 IndexedDB）
 const webStorage = {
   async setItemAsync(key: string, value: string): Promise<void> {
-    try {
-      localStorage.setItem(key, value);
-    } catch (error) {
-      throw new Error(`Failed to save ${key}`);
-    }
+    await secureStorage.setItem(key, value);
   },
 
   async getItemAsync(key: string): Promise<string | null> {
-    try {
-      return localStorage.getItem(key);
-    } catch (error) {
-      return null;
-    }
+    return await secureStorage.getItem(key);
   },
 
   async deleteItemAsync(key: string): Promise<void> {
-    try {
-      localStorage.removeItem(key);
-    } catch (error) {
-      throw new Error(`Failed to delete ${key}`);
-    }
+    await secureStorage.removeItem(key);
   },
 };
 

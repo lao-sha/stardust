@@ -16,6 +16,9 @@
 pub use pallet::*;
 pub use pallet::ExchangeRateData;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 #[cfg(test)]
 mod mock;
 

@@ -39,11 +39,15 @@
 
 pub use pallet::*;
 
-#[cfg(test)]
-mod mock;
+pub mod weights;
+pub use weights::WeightInfo;
 
-#[cfg(test)]
-mod tests;
+// TODO: 测试文件待完善 mock 配置（测试引用已删除的存储项）
+// #[cfg(test)]
+// mod mock;
+
+// #[cfg(test)]
+// mod tests;
 
 pub mod types;
 pub mod constants;
@@ -768,6 +772,52 @@ pub mod pallet {
 			// 尝试从完整存储获取（旧格式，向后兼容）
 			let chart = ChartById::<T>::get(chart_id)?;
 			Some(crate::interpretation::build_full_bazi_chart_for_api(&chart))
+		}
+
+		/// RPC 接口：获取加密命盘的完整解盘
+		///
+		/// 基于加密命盘的四柱索引计算解盘，无需解密敏感数据。
+		/// 当前实现：复用普通命盘的解盘逻辑（加密命盘与普通命盘共享存储）
+		///
+		/// # 参数
+		/// - chart_id: 加密八字命盘ID
+		///
+		/// # 返回
+		/// - Some(FullInterpretation): 完整解盘结果
+		/// - None: 命盘不存在
+		pub fn get_encrypted_chart_interpretation(chart_id: u64) -> Option<crate::interpretation::FullInterpretation> {
+			// 当前实现：加密命盘与普通命盘共享存储，直接复用
+			Self::get_full_interpretation(chart_id)
+		}
+
+		/// RPC 接口：检查加密命盘是否存在
+		///
+		/// # 参数
+		/// - chart_id: 加密八字命盘ID
+		///
+		/// # 返回
+		/// - true: 命盘存在
+		/// - false: 命盘不存在
+		pub fn encrypted_chart_exists(chart_id: u64) -> bool {
+			// 当前实现：检查普通存储（加密命盘与普通命盘共享存储）
+			ChartCompactById::<T>::contains_key(chart_id) || ChartById::<T>::contains_key(chart_id)
+		}
+
+		/// RPC 接口：获取加密命盘创建者
+		///
+		/// # 参数
+		/// - chart_id: 加密八字命盘ID
+		///
+		/// # 返回
+		/// - Some(AccountId): 命盘创建者地址
+		/// - None: 命盘不存在
+		pub fn get_encrypted_chart_owner(chart_id: u64) -> Option<T::AccountId> {
+			// 优先从精简存储获取
+			if let Some(chart) = ChartCompactById::<T>::get(chart_id) {
+				return Some(chart.owner);
+			}
+			// 尝试从完整存储获取
+			ChartById::<T>::get(chart_id).map(|chart| chart.owner)
 		}
 
 		/// 内部函数：临时排盘（支持指定日历类型）

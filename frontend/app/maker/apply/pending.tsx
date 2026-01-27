@@ -9,7 +9,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
 } from 'react-native';
@@ -18,6 +17,8 @@ import { useMakerStore } from '@/stores/maker.store';
 import { ApplicationStatus } from '@/services/maker.service';
 import { PageHeader } from '@/components/PageHeader';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
+import { Card, Button } from '@/components/common';
+import { useAsync } from '@/hooks';
 
 export default function PendingPage() {
   const router = useRouter();
@@ -25,11 +26,11 @@ export default function PendingPage() {
     makerApp,
     fetchMakerInfo,
     cancelApplication,
-    isSubmitting,
     txStatus,
     error,
     clearError,
   } = useMakerStore();
+  const { execute, isLoading } = useAsync();
 
   const [showTxDialog, setShowTxDialog] = React.useState(false);
 
@@ -64,16 +65,14 @@ export default function PendingPage() {
           text: '确定取消',
           style: 'destructive',
           onPress: async () => {
-            try {
-              setShowTxDialog(true);
+            setShowTxDialog(true);
+            await execute(async () => {
               await cancelApplication();
               setTimeout(() => {
                 setShowTxDialog(false);
                 router.replace('/maker');
               }, 1500);
-            } catch (err) {
-              // 错误已在 store 中处理
-            }
+            });
           },
         },
       ]
@@ -115,7 +114,7 @@ export default function PendingPage() {
         </View>
 
         {/* 申请信息 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>申请编号</Text>
             <Text style={styles.infoValue}>#{makerApp.id}</Text>
@@ -128,10 +127,10 @@ export default function PendingPage() {
             <Text style={styles.infoLabel}>预计审核</Text>
             <Text style={styles.infoValue}>24 小时内</Text>
           </View>
-        </View>
+        </Card>
 
         {/* 审核流程 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <Text style={styles.cardTitle}>审核流程</Text>
 
           <View style={styles.timeline}>
@@ -161,10 +160,10 @@ export default function PendingPage() {
               <Text style={[styles.timelineText, styles.textPending]}>○ 审核通过</Text>
             </View>
           </View>
-        </View>
+        </Card>
 
         {/* 审核说明 */}
-        <View style={styles.infoCard}>
+        <Card style={[styles.section, styles.infoCard]}>
           <Text style={styles.infoIcon}>💡</Text>
           <Text style={styles.infoTitle}>审核说明</Text>
           <View style={styles.infoList}>
@@ -172,20 +171,16 @@ export default function PendingPage() {
             <Text style={styles.infoItem}>• 审核驳回将退还押金</Text>
             <Text style={styles.infoItem}>• 如需取消可点击下方按钮</Text>
           </View>
-        </View>
+        </Card>
 
         {/* 取消按钮 */}
-        <TouchableOpacity
-          style={styles.cancelButton}
+        <Button
+          title="取消申请"
           onPress={handleCancel}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#FF3B30" />
-          ) : (
-            <Text style={styles.cancelButtonText}>取消申请</Text>
-          )}
-        </TouchableOpacity>
+          loading={isLoading}
+          disabled={isLoading}
+          variant="outline"
+        />
       </ScrollView>
 
       {/* 交易状态弹窗 */}
@@ -227,10 +222,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1C1C1E',
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+  section: {
     marginBottom: 16,
   },
   cardTitle: {
@@ -291,9 +283,6 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     backgroundColor: '#FFF9E6',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
   },
   infoIcon: {
     fontSize: 20,
@@ -312,19 +301,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666666',
     lineHeight: 20,
-  },
-  cancelButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#FF3B30',
-    marginBottom: 32,
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF3B30',
   },
 });

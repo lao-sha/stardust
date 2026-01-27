@@ -4,39 +4,45 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, Text, ScrollView } from 'react-native';
+import { View, StyleSheet, Pressable, Text, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { DivinationHistory } from '@/components/DivinationHistory';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { PageHeader } from '@/components/PageHeader';
+import { LoadingSpinner, EmptyState } from '@/components/common';
 import {
   DivinationType,
   DivinationRecord,
   divinationService,
 } from '@/services/divination.service';
-import { getCurrentSignerAddress } from '@/lib/signer';
+import { useWallet, useAsync } from '@/hooks';
 
 const THEME_COLOR = '#B2955D';
 
 export default function DivinationHistoryPage() {
   const router = useRouter();
+  const { address } = useWallet();
+  const { execute, isLoading } = useAsync();
+
   const [selectedType, setSelectedType] = useState<DivinationType | undefined>(undefined);
   const [stats, setStats] = useState<{ total: number; byType: Record<DivinationType, number> } | null>(null);
 
   useEffect(() => {
-    loadStats();
-  }, []);
+    if (address) {
+      loadStats();
+    }
+  }, [address]);
 
   const loadStats = async () => {
     try {
-      const address = getCurrentSignerAddress();
-      if (!address) return;
-
-      const statistics = await divinationService.getDivinationStats(address);
-      setStats(statistics);
+      await execute(async () => {
+        const statistics = await divinationService.getDivinationStats(address!);
+        setStats(statistics);
+      });
     } catch (error) {
       console.error('Load stats error:', error);
+      Alert.alert('错误', '加载统计数据失败');
     }
   };
 

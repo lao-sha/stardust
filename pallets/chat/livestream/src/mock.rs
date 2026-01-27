@@ -63,17 +63,12 @@ impl pallet_livestream::Config for Test {
     type MaxCoHostsPerRoom = ConstU32<4>;
     type PlatformFeePercent = ConstU8<20>;
     type MinWithdrawAmount = ConstU128<1_000_000_000_000>; // 1 DUST
-    type RoomDeposit = ConstU128<10_000_000_000_000>; // 10 DUST
+    type RoomBond = ConstU128<10_000_000_000_000>; // 10 DUST 兜底
+    type RoomBondUsd = ConstU64<5_000_000>; // 5 USDT
+    type DepositCalculator = (); // 使用空实现，返回兜底值
     type PalletId = LivestreamPalletId;
     type GovernanceOrigin = EnsureRoot<u64>;
     type WeightInfo = ();
-
-    // 举报系统配置
-    type MinReportDeposit = ConstU128<10_000_000_000_000>; // 10 DUST
-    type ReportTimeout = ConstU64<100>; // 100 blocks for testing
-    type ReportCooldownPeriod = ConstU64<10>; // 10 blocks for testing
-    type ReportWithdrawWindow = ConstU64<5>; // 5 blocks for testing
-    type ContentCommittee = EnsureRoot<u64>; // Use root for testing
 }
 
 /// 构建测试外部环境

@@ -25,7 +25,7 @@ sp-core = { workspace = true }
 # 本地依赖
 pallet-chat-common = { path = "../common", default-features = false }
 pallet-chat-permission = { path = "../permission", default-features = false }
-# 注意：不集成 pallet-stardust-ipfs，聊天消息有 180 天过期机制，不适合 PIN
+# 注意：不集成 pallet-storage-service，聊天消息有 180 天过期机制，不适合 PIN
 
 [dev-dependencies]
 sp-io = { workspace = true }

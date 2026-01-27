@@ -165,11 +165,132 @@ impl<O: Into<Result<frame_system::RawOrigin<u64>, O>> + From<frame_system::RawOr
     }
 }
 
+/// 模拟 IPFS 内容注册
+pub struct MockContentRegistry;
+
+impl pallet_storage_service::ContentRegistry for MockContentRegistry {
+    fn register_content(
+        _domain: Vec<u8>,
+        _subject_id: u64,
+        _cid: Vec<u8>,
+        _tier: pallet_storage_service::PinTier,
+    ) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+
+    fn is_domain_registered(_domain: &[u8]) -> bool {
+        true
+    }
+
+    fn get_domain_subject_type(_domain: &[u8]) -> Option<pallet_storage_service::SubjectType> {
+        Some(pallet_storage_service::SubjectType::General)
+    }
+}
+
+/// 模拟定价接口
+pub struct MockPricing;
+
+impl pallet_trading_common::PricingProvider<u64> for MockPricing {
+    fn get_dust_to_usd_rate() -> Option<u64> {
+        Some(1_000_000) // 1 DUST = 1 USD
+    }
+
+    fn report_swap_order(_timestamp: u64, _price_usdt: u64, _dust_qty: u128) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+}
+
+/// 模拟联盟分成
+pub struct MockAffiliateDistributor;
+
+impl pallet_affiliate::types::AffiliateDistributor<u64, u128, u64> for MockAffiliateDistributor {
+    fn distribute_rewards(
+        _buyer: &u64,
+        _amount: u128,
+        _target: Option<(u8, u64)>,
+    ) -> Result<u128, sp_runtime::DispatchError> {
+        Ok(0)
+    }
+}
+
+/// 模拟聊天权限管理
+pub struct MockChatPermission;
+
+impl pallet_chat_permission::SceneAuthorizationManager<u64, u64> for MockChatPermission {
+    fn grant_scene_authorization(
+        _source: [u8; 8],
+        _from: &u64,
+        _to: &u64,
+        _scene_type: pallet_chat_permission::SceneType,
+        _scene_id: pallet_chat_permission::SceneId,
+        _duration: Option<u64>,
+        _metadata: Vec<u8>,
+    ) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+
+    fn grant_bidirectional_scene_authorization(
+        _source: [u8; 8],
+        _user1: &u64,
+        _user2: &u64,
+        _scene_type: pallet_chat_permission::SceneType,
+        _scene_id: pallet_chat_permission::SceneId,
+        _duration: Option<u64>,
+        _metadata: Vec<u8>,
+    ) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+
+    fn revoke_scene_authorization(
+        _source: [u8; 8],
+        _from: &u64,
+        _to: &u64,
+        _scene_type: pallet_chat_permission::SceneType,
+        _scene_id: pallet_chat_permission::SceneId,
+    ) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+
+    fn revoke_all_by_source(
+        _source: [u8; 8],
+        _user1: &u64,
+        _user2: &u64,
+    ) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+
+    fn extend_scene_authorization(
+        _source: [u8; 8],
+        _from: &u64,
+        _to: &u64,
+        _scene_type: pallet_chat_permission::SceneType,
+        _scene_id: pallet_chat_permission::SceneId,
+        _additional_duration: u64,
+    ) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+
+    fn has_any_valid_scene_authorization(_from: &u64, _to: &u64) -> bool {
+        false
+    }
+
+    fn get_valid_scene_authorizations(
+        _user1: &u64,
+        _user2: &u64,
+    ) -> Vec<pallet_chat_permission::SceneAuthorization<u64>> {
+        Vec::new()
+    }
+}
+
 impl pallet_divination_market::Config for Test {
     type Currency = Balances;
     type DivinationProvider = MockDivinationProvider;
+    type ContentRegistry = MockContentRegistry;
     type MinDeposit = ConstU64<10_000>;
+    type MinDepositUsd = ConstU64<100_000_000>;
+    type Pricing = MockPricing;
     type MinServicePrice = ConstU64<100>;
+    type MaxServicePrice = ConstU64<100_000_000>;
     type OrderTimeout = ConstU64<1000>;
     type AcceptTimeout = ConstU64<100>;
     type ReviewPeriod = ConstU64<500>;
@@ -182,22 +303,14 @@ impl pallet_divination_market::Config for Test {
     type MaxFollowUpsPerOrder = ConstU32<5>;
     type PlatformAccount = PlatformAccount;
     type GovernanceOrigin = MockGovernanceOrigin;
-
-    // ==================== 举报系统配置 ====================
-    /// 最小举报押金：1000 单位
-    type MinReportDeposit = ConstU64<1000>;
-    /// 举报处理超时：2000 区块（约 3.3 小时，用于测试）
-    type ReportTimeout = ConstU64<2000>;
-    /// 举报冷却期：100 区块（同一用户对同一大师的举报间隔）
-    type ReportCooldownPeriod = ConstU64<100>;
-    /// 撤回举报窗口期：50 区块
-    type ReportWithdrawWindow = ConstU64<50>;
-    /// 恶意举报信用扣分：50 分
-    type MaliciousReportPenalty = ConstU16<50>;
-    /// 举报审核委员会权限
-    type ReportReviewOrigin = MockReportReviewOrigin;
-    /// 国库账户
     type TreasuryAccount = TreasuryAccount;
+    // 🆕 联盟计酬
+    type AffiliateDistributor = MockAffiliateDistributor;
+    // 🆕 解读修改窗口
+    type InterpretationEditWindow = ConstU64<28800>;
+    // 🆕 聊天权限集成
+    type ChatPermission = MockChatPermission;
+    type OrderChatDuration = ConstU64<432000>;
 }
 
 /// 构建测试外部状态

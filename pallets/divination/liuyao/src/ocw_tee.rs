@@ -10,7 +10,6 @@
 //! - 支持三种隐私模式
 
 use crate::algorithm;
-use crate::types::*;
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::pallet_prelude::*;
 use pallet_divination_ocw_tee::{

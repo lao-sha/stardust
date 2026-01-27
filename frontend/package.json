@@ -8,7 +8,9 @@
     "start:online": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "prebuild:web": "node scripts/inject-csp-nonce.js",
+    "build:web": "npm run prebuild:web && expo export:web"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -20,6 +20,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { useUserStore } from '@/stores/user.store';
+import { Card, Button } from '@/components/common';
+import { useAsync } from '@/hooks';
 
 // 主题色
 const THEME_COLOR = '#B2955D';
@@ -31,6 +33,7 @@ const SHICHEN = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', 
 export default function ProfileEditPage() {
   const router = useRouter();
   const { myProfile, updateProfile } = useUserStore();
+  const { execute, isLoading } = useAsync();
 
   // 个人资料状态 (对应 membership pallet)
   const [profile, setProfile] = useState({
@@ -106,7 +109,7 @@ export default function ProfileEditPage() {
       return;
     }
 
-    try {
+    await execute(async () => {
       // 更新聊天用户资料
       await updateProfile({
         nickname: profile.displayName,
@@ -118,10 +121,7 @@ export default function ProfileEditPage() {
       // 这部分需要单独的 API 调用
 
       setSaveModalVisible(true);
-    } catch (error) {
-      setErrorMessage((error as Error).message);
-      setErrorModalVisible(true);
-    }
+    });
   };
 
   // 确认保存后返回
@@ -151,7 +151,7 @@ export default function ProfileEditPage() {
         {/* 昵称和签名 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>基本信息</Text>
-          <View style={styles.card}>
+          <Card>
             <View style={styles.formItem}>
               <Text style={styles.formLabel}>昵称</Text>
               <TextInput
@@ -176,13 +176,13 @@ export default function ProfileEditPage() {
                 multiline
               />
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 性别选择 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>性别</Text>
-          <View style={styles.card}>
+          <Card>
             <View style={styles.genderRow}>
               {(['male', 'female', 'other'] as const).map((g) => (
                 <Pressable
@@ -207,13 +207,13 @@ export default function ProfileEditPage() {
                 </Pressable>
               ))}
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 出生日期 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>出生日期（公历）</Text>
-          <View style={styles.card}>
+          <Card>
             <View style={styles.dateRow}>
               <View style={styles.dateItem}>
                 <TextInput
@@ -252,13 +252,13 @@ export default function ProfileEditPage() {
                 <Text style={styles.dateUnit}>日</Text>
               </View>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 出生时辰 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>出生时辰</Text>
-          <View style={styles.card}>
+          <Card>
             <View style={styles.hourRow}>
               <TextInput
                 style={styles.hourInput}
@@ -277,13 +277,13 @@ export default function ProfileEditPage() {
               )}
             </View>
             <Text style={styles.formHint}>24小时制，不确定可留空</Text>
-          </View>
+          </Card>
         </View>
 
         {/* 出生地点 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>出生地点（经纬度）</Text>
-          <View style={styles.card}>
+          <Card>
             <View style={styles.locationRow}>
               <View style={styles.locationItem}>
                 <Text style={styles.locationLabel}>经度</Text>
@@ -313,13 +313,13 @@ export default function ProfileEditPage() {
               <Ionicons name="location-outline" size={18} color={THEME_COLOR} />
               <Text style={styles.mapBtnText}>从地图选取</Text>
             </Pressable>
-          </View>
+          </Card>
         </View>
 
         {/* 服务提供者 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>服务提供者</Text>
-          <View style={styles.card}>
+          <Card>
             <Pressable
               style={styles.switchRow}
               onPress={() => setProfile(prev => ({ ...prev, isProvider: !prev.isProvider }))}
@@ -332,11 +332,11 @@ export default function ProfileEditPage() {
                 <View style={[styles.switchThumb, profile.isProvider && styles.switchThumbActive]} />
               </View>
             </Pressable>
-          </View>
+          </Card>
         </View>
 
         {/* 隐私提示 */}
-        <View style={styles.privacyCard}>
+        <Card style={styles.privacyCard}>
           <Ionicons name="shield-checkmark" size={20} color={THEME_COLOR} />
           <View style={styles.privacyContent}>
             <Text style={styles.privacyTitle}>隐私保护</Text>
@@ -344,7 +344,7 @@ export default function ProfileEditPage() {
               您的出生信息将加密存储在链上，仅您本人可查看完整信息。占卜师只能看到必要的命理数据。
             </Text>
           </View>
-        </View>
+        </Card>
 
         {/* 底部间距 */}
         <View style={{ height: 100 }} />
@@ -437,11 +437,6 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 8,
     paddingHorizontal: 4,
-  },
-  card: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
   },
   formItem: {
     flexDirection: 'row',
@@ -635,9 +630,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
-    padding: 16,
     backgroundColor: THEME_COLOR + '10',
-    borderRadius: 12,
     marginTop: 4,
   },
   privacyContent: {

@@ -27,6 +27,9 @@ extern crate alloc;
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 pub mod algorithm;
 pub mod constants;
 pub mod interpretation;
@@ -110,22 +113,6 @@ pub mod pallet {
 
         /// AI 预言机权限来源
         type AiOracleOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-
-        // ================================
-        // 存储押金相关配置
-        // ================================
-
-        /// 每 KB 存储押金基础费率
-        #[pallet::constant]
-        type StorageDepositPerKb: Get<u128>;
-
-        /// 最小存储押金
-        #[pallet::constant]
-        type MinStorageDeposit: Get<u128>;
-
-        /// 最大存储押金
-        #[pallet::constant]
-        type MaxStorageDeposit: Get<u128>;
     }
 
     /// 货币余额类型别名
@@ -229,15 +216,6 @@ pub mod pallet {
         crate::interpretation::AiInterpretationResult,
     >;
 
-    /// 存储押金记录
-    #[pallet::storage]
-    #[pallet::getter(fn deposit_records)]
-    pub type DepositRecords<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        u64,
-        pallet_divination_common::deposit::DepositRecord<BalanceOf<T>, BlockNumberFor<T>>,
-    >;
 
     // ==================== 事件 ====================
 
@@ -294,20 +272,6 @@ pub mod pallet {
         HexagramDeleted {
             hexagram_id: u64,
             owner: T::AccountId,
-        },
-        /// 存储押金已锁定
-        StorageDepositLocked {
-            hexagram_id: u64,
-            owner: T::AccountId,
-            deposit: BalanceOf<T>,
-            privacy_mode: u8,
-        },
-        /// 存储押金已返还
-        StorageDepositRefunded {
-            hexagram_id: u64,
-            owner: T::AccountId,
-            refund: BalanceOf<T>,
-            treasury: BalanceOf<T>,
         },
     }
 
@@ -367,10 +331,6 @@ pub mod pallet {
         PrivacyRecordCreationFailed,
         /// 无效的起卦方式（不支持该方式带隐私数据起卦）
         InvalidMethod,
-        /// 押金余额不足
-        InsufficientDepositBalance,
-        /// 押金记录未找到
-        DepositRecordNotFound,
     }
 
     // ==================== 可调用函数 ====================
@@ -1074,7 +1034,6 @@ pub mod pallet {
         /// 4. 解卦数据（Interpretations）
         /// 5. AI 解读请求（AiInterpretationRequests）
         /// 6. AI 解读结果（AiInterpretations）
-        /// 7. 押金记录（DepositRecords）
         #[pallet::call_index(11)]
         #[pallet::weight(Weight::from_parts(50_000_000, 0))]
         pub fn delete_hexagram(
@@ -1088,11 +1047,7 @@ pub mod pallet {
                 .ok_or(Error::<T>::HexagramNotFound)?;
             ensure!(hexagram.ben_gua.diviner == who, Error::<T>::NotOwner);
 
-            // 2. 返还押金（如果有押金记录）
-            let (refund, treasury) = Self::unreserve_storage_deposit(&who, hexagram_id)
-                .unwrap_or((BalanceOf::<T>::zero(), BalanceOf::<T>::zero()));
-
-            // 3. 从用户索引中移除
+            // 2. 从用户索引中移除
             UserHexagrams::<T>::mutate(&who, |hexagrams| {
                 hexagrams.retain(|&id| id != hexagram_id);
             });
@@ -1116,21 +1071,11 @@ pub mod pallet {
             // 8. 删除主卦象记录
             Hexagrams::<T>::remove(hexagram_id);
 
-            // 9. 发送删除事件
+            // 6. 发送删除事件
             Self::deposit_event(Event::HexagramDeleted {
                 hexagram_id,
-                owner: who.clone(),
+                owner: who,
             });
-
-            // 10. 发送押金返还事件（如果有押金）
-            if !refund.is_zero() || !treasury.is_zero() {
-                Self::deposit_event(Event::StorageDepositRefunded {
-                    hexagram_id,
-                    owner: who,
-                    refund,
-                    treasury,
-                });
-            }
 
             Ok(())
         }
@@ -1637,168 +1582,6 @@ pub mod pallet {
         /// - AI 解读结果（包含摘要、评分等）
         pub fn get_ai_interpretation(hexagram_id: u64) -> Option<crate::interpretation::AiInterpretationResult> {
             AiInterpretations::<T>::get(hexagram_id)
-        }
-    }
-
-    // ========================================================================
-    // 存储押金管理辅助函数
-    // ========================================================================
-
-    impl<T: Config> Pallet<T>
-    where
-        BalanceOf<T>: From<u32> + sp_runtime::traits::Saturating + core::ops::Div<Output = BalanceOf<T>> + sp_runtime::traits::Zero + PartialOrd + Copy,
-        BlockNumberFor<T>: From<u32> + sp_runtime::traits::Saturating + PartialOrd + Copy,
-    {
-        /// 计算存储押金
-        ///
-        /// 根据数据大小和隐私模式计算押金金额
-        ///
-        /// # 公式
-        /// ```text
-        /// 押金 = 基础费率 × ceil(数据大小 / 1024) × 隐私模式系数 / 100
-        /// ```
-        ///
-        /// # 参数
-        /// - `data_size`: 数据大小（字节）
-        /// - `privacy_mode`: 隐私模式
-        ///
-        /// # 返回
-        /// 押金金额（已限制在最小/最大范围内）
-        pub fn calculate_deposit(data_size: u32, privacy_mode: pallet_divination_common::deposit::PrivacyMode) -> BalanceOf<T> {
-            use sp_runtime::SaturatedConversion;
-
-            // 计算 KB 数（向上取整）
-            let size_kb = (data_size.saturating_add(1023)) / 1024;
-            let size_kb = if size_kb == 0 { 1 } else { size_kb };
-
-            // 获取隐私模式系数
-            let multiplier = privacy_mode.multiplier();
-
-            // 获取配置值（u128 类型）
-            let base_rate = T::StorageDepositPerKb::get();
-            let min_deposit = T::MinStorageDeposit::get();
-            let max_deposit = T::MaxStorageDeposit::get();
-
-            // 计算押金（u128）
-            // deposit = base_rate × size_kb × multiplier / 100
-            let deposit_u128 = base_rate
-                .saturating_mul(size_kb as u128)
-                .saturating_mul(multiplier as u128)
-                / 100u128;
-
-            // 限制在最小/最大范围内
-            let clamped = if deposit_u128 < min_deposit {
-                min_deposit
-            } else if deposit_u128 > max_deposit {
-                max_deposit
-            } else {
-                deposit_u128
-            };
-
-            // 转换为 BalanceOf<T>
-            clamped.saturated_into()
-        }
-
-        /// 锁定存储押金
-        ///
-        /// 从用户余额中锁定存储押金
-        ///
-        /// # 参数
-        /// - `who`: 用户账户
-        /// - `hexagram_id`: 卦象 ID
-        /// - `data_size`: 数据大小（字节）
-        /// - `privacy_mode`: 隐私模式
-        ///
-        /// # 返回
-        /// - `Ok(押金金额)`: 锁定成功
-        /// - `Err`: 余额不足或其他错误
-        pub fn reserve_storage_deposit(
-            who: &T::AccountId,
-            hexagram_id: u64,
-            data_size: u32,
-            privacy_mode: pallet_divination_common::deposit::PrivacyMode,
-        ) -> Result<BalanceOf<T>, DispatchError> {
-            // 1. 计算押金
-            let deposit_amount = Self::calculate_deposit(data_size, privacy_mode);
-
-            // 2. 锁定押金
-            <T::Currency as ReservableCurrency<T::AccountId>>::reserve(
-                who,
-                deposit_amount,
-            ).map_err(|_| Error::<T>::InsufficientDepositBalance)?;
-
-            // 3. 记录押金信息
-            let current_block = <frame_system::Pallet<T>>::block_number();
-            let record = pallet_divination_common::deposit::DepositRecord {
-                amount: deposit_amount,
-                created_at: current_block,
-                data_size,
-                privacy_mode,
-            };
-            DepositRecords::<T>::insert(hexagram_id, record);
-
-            Ok(deposit_amount)
-        }
-
-        /// 返还存储押金
-        ///
-        /// 根据存储时长计算返还比例并释放押金
-        ///
-        /// # 参数
-        /// - `who`: 用户账户
-        /// - `hexagram_id`: 卦象 ID
-        ///
-        /// # 返回
-        /// - `Ok((返还金额, 国库金额))`: 返还成功
-        /// - `Err`: 押金记录不存在
-        pub fn unreserve_storage_deposit(
-            who: &T::AccountId,
-            hexagram_id: u64,
-        ) -> Result<(BalanceOf<T>, BalanceOf<T>), DispatchError> {
-            // 1. 获取押金记录
-            let record = DepositRecords::<T>::take(hexagram_id)
-                .ok_or(Error::<T>::DepositRecordNotFound)?;
-
-            // 2. 计算返还金额
-            let current_block = <frame_system::Pallet<T>>::block_number();
-            let (refund_amount, treasury_amount) = pallet_divination_common::deposit::calculate_refund_amount(
-                record.amount,
-                record.created_at,
-                current_block,
-            );
-
-            // 3. 释放押金（返还给用户）
-            let actually_unreserved = <T::Currency as ReservableCurrency<T::AccountId>>::unreserve(
-                who,
-                refund_amount,
-            );
-
-            // 4. 释放进入国库的部分（简化实现：直接释放）
-            if !treasury_amount.is_zero() {
-                let _ = <T::Currency as ReservableCurrency<T::AccountId>>::unreserve(
-                    who,
-                    treasury_amount,
-                );
-            }
-
-            // 返回实际返还和国库金额
-            Ok((refund_amount.saturating_sub(refund_amount.saturating_sub(actually_unreserved)), treasury_amount))
-        }
-
-        /// 估算特定隐私模式的押金
-        ///
-        /// 用于前端预估费用显示
-        ///
-        /// # 参数
-        /// - `privacy_mode`: 隐私模式 (0=Public, 1=Partial, 2=Private)
-        ///
-        /// # 返回
-        /// 估算的押金金额
-        pub fn estimate_deposit(privacy_mode: u8) -> Option<BalanceOf<T>> {
-            let mode = pallet_divination_common::deposit::PrivacyMode::from_u8(privacy_mode)?;
-            // 梅花易数数据估算大小: 800 bytes
-            let data_size = pallet_divination_common::deposit::estimate_data_size(1, mode); // 1 = Meihua
-            Some(Self::calculate_deposit(data_size, mode))
         }
     }
 }

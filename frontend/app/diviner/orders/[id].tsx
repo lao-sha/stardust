@@ -2,7 +2,7 @@
  * 订单详情页面
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { PageHeader } from '@/components/PageHeader';
 import { BottomNavBar } from '@/components/BottomNavBar';
+import { UnlockWalletDialog } from '@/components/UnlockWalletDialog';
+import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
 import {
   Order,
   OrderStatus,
@@ -25,6 +27,8 @@ import {
   DivinationType,
   ServiceType,
 } from '@/features/diviner';
+import { divinationMarketService } from '@/services/divination-market.service';
+import { isSignerUnlocked, unlockWalletForSigning } from '@/lib/signer';
 
 const THEME_COLOR = '#B2955D';
 
@@ -35,41 +39,71 @@ export default function OrderDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [order, setOrder] = useState<Order | null>(null);
   const [answerText, setAnswerText] = useState('');
+  const [showUnlockDialog, setShowUnlockDialog] = useState(false);
+  const [showTxStatus, setShowTxStatus] = useState(false);
+  const [txStatus, setTxStatus] = useState('');
+  const [pendingAction, setPendingAction] = useState<'accept' | 'reject' | 'submit' | null>(null);
+
+  const orderId = Number(id);
+
+  const loadOrder = useCallback(async () => {
+    try {
+      const orderData = await divinationMarketService.getOrder(orderId);
+      if (orderData) {
+        // 转换为前端格式
+        setOrder({
+          id: orderData.id,
+          customer: orderData.customer,
+          provider: '', // 需要从 provider 查询
+          packageId: orderData.packageId,
+          divinationType: DivinationType.Meihua, // 需要从 package 查询
+          questionCid: orderData.questionCid,
+          answerCid: orderData.answerCid,
+          totalAmount: orderData.amount,
+          platformFee: orderData.amount / 10n, // 假设 10% 手续费
+          providerEarnings: orderData.amount * 9n / 10n,
+          isUrgent: false,
+          status: orderData.status as unknown as OrderStatus,
+          createdAt: orderData.createdAt,
+          completedAt: orderData.completedAt,
+          followUpsUsed: 0,
+          followUpsTotal: 3,
+        });
+      }
+    } catch (error) {
+      console.error('Load order error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [orderId]);
 
   useEffect(() => {
-    // TODO: 从链上加载订单详情
-    setTimeout(() => {
-      setOrder({
-        id: Number(id),
-        customer: '5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty',
-        provider: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-        packageId: 1,
-        divinationType: DivinationType.Meihua,
-        questionCid: 'QmXxx...',
-        totalAmount: BigInt(10 * 1e10),
-        platformFee: BigInt(1.5 * 1e10),
-        providerEarnings: BigInt(8.5 * 1e10),
-        isUrgent: false,
-        status: OrderStatus.Accepted,
-        createdAt: Date.now() - 3600000,
-        acceptedAt: Date.now() - 1800000,
-        followUpsUsed: 0,
-        followUpsTotal: 3,
-      });
-      setLoading(false);
-    }, 500);
-  }, [id]);
+    loadOrder();
+  }, [loadOrder]);
 
-  const handleAccept = async () => {
-    setSubmitting(true);
+  const handleAccept = () => {
+    if (!isSignerUnlocked()) {
+      setPendingAction('accept');
+      setShowUnlockDialog(true);
+      return;
+    }
+    executeAccept();
+  };
+
+  const executeAccept = async () => {
+    setShowTxStatus(true);
+    setTxStatus('正在接受订单...');
+
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setOrder(prev => prev ? { ...prev, status: OrderStatus.Accepted, acceptedAt: Date.now() } : null);
-      Alert.alert('成功', '已接单');
-    } catch (error) {
-      Alert.alert('失败', '操作失败，请重试');
-    } finally {
-      setSubmitting(false);
+      await divinationMarketService.acceptOrder(orderId, (status) => setTxStatus(status));
+      setTxStatus('接单成功！');
+      setTimeout(() => {
+        setShowTxStatus(false);
+        loadOrder();
+      }, 1500);
+    } catch (error: any) {
+      setShowTxStatus(false);
+      Alert.alert('接单失败', error.message || '请稍后重试');
     }
   };
 
@@ -79,43 +113,86 @@ export default function OrderDetailPage() {
       {
         text: '确认拒绝',
         style: 'destructive',
-        onPress: async () => {
-          setSubmitting(true);
-          try {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            setOrder(prev => prev ? { ...prev, status: OrderStatus.Cancelled } : null);
-            Alert.alert('成功', '已拒绝订单');
-          } catch (error) {
-            Alert.alert('失败', '操作失败，请重试');
-          } finally {
-            setSubmitting(false);
+        onPress: () => {
+          if (!isSignerUnlocked()) {
+            setPendingAction('reject');
+            setShowUnlockDialog(true);
+            return;
           }
+          executeReject();
         },
       },
     ]);
   };
 
-  const handleSubmitAnswer = async () => {
+  const executeReject = async () => {
+    setShowTxStatus(true);
+    setTxStatus('正在拒绝订单...');
+
+    try {
+      await divinationMarketService.rejectOrder(orderId, '解卦师拒绝', (status) => setTxStatus(status));
+      setTxStatus('拒绝成功！');
+      setTimeout(() => {
+        setShowTxStatus(false);
+        loadOrder();
+      }, 1500);
+    } catch (error: any) {
+      setShowTxStatus(false);
+      Alert.alert('拒绝失败', error.message || '请稍后重试');
+    }
+  };
+
+  const handleSubmitAnswer = () => {
     if (!answerText.trim()) {
       Alert.alert('提示', '请输入解读内容');
       return;
     }
 
-    setSubmitting(true);
+    if (!isSignerUnlocked()) {
+      setPendingAction('submit');
+      setShowUnlockDialog(true);
+      return;
+    }
+    executeSubmitAnswer();
+  };
+
+  const executeSubmitAnswer = async () => {
+    setShowTxStatus(true);
+    setTxStatus('正在上传解读内容...');
+
     try {
-      // TODO: 上传到 IPFS 并提交到链上
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setOrder(prev => prev ? {
-        ...prev,
-        status: OrderStatus.Completed,
-        answerCid: 'QmNewAnswer...',
-        completedAt: Date.now(),
-      } : null);
-      Alert.alert('成功', '解读已提交，订单完成');
-    } catch (error) {
-      Alert.alert('失败', '提交失败，请重试');
-    } finally {
-      setSubmitting(false);
+      // TODO: 先上传到 IPFS 获取 CID
+      const answerCid = 'Qm' + Date.now().toString(36); // 临时 mock
+
+      setTxStatus('正在提交解卦结果...');
+      await divinationMarketService.submitInterpretation(orderId, answerCid, (status) => setTxStatus(status));
+
+      setTxStatus('提交成功！');
+      setTimeout(() => {
+        setShowTxStatus(false);
+        setAnswerText('');
+        loadOrder();
+      }, 1500);
+    } catch (error: any) {
+      setShowTxStatus(false);
+      Alert.alert('提交失败', error.message || '请稍后重试');
+    }
+  };
+
+  const handleWalletUnlocked = async (password: string) => {
+    try {
+      await unlockWalletForSigning(password);
+      setShowUnlockDialog(false);
+      if (pendingAction === 'accept') {
+        await executeAccept();
+      } else if (pendingAction === 'reject') {
+        await executeReject();
+      } else if (pendingAction === 'submit') {
+        await executeSubmitAnswer();
+      }
+      setPendingAction(null);
+    } catch (error: any) {
+      Alert.alert('解锁失败', error.message || '密码错误');
     }
   };
 
@@ -292,6 +369,18 @@ export default function OrderDetailPage() {
           </View>
         )}
       </ScrollView>
+
+      <UnlockWalletDialog
+        visible={showUnlockDialog}
+        onClose={() => setShowUnlockDialog(false)}
+        onUnlock={handleWalletUnlocked}
+      />
+
+      <TransactionStatusDialog
+        visible={showTxStatus}
+        status={txStatus}
+        onClose={() => setShowTxStatus(false)}
+      />
 
       <BottomNavBar activeTab="profile" />
     </View>

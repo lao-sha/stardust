@@ -1,0 +1,60 @@
+[package]
+name = "pallet-matchmaking-recommendation"
+version = "0.1.0"
+description = "婚恋模块 - 推荐系统"
+authors = ["Stardust Team"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/stardust/stardust"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { features = ["derive"], workspace = true }
+scale-info = { features = ["derive"], workspace = true }
+frame-benchmarking = { optional = true, workspace = true }
+frame-support = { workspace = true }
+frame-system = { workspace = true }
+sp-runtime = { workspace = true }
+sp-std = { workspace = true }
+sp-core = { workspace = true }
+log = { workspace = true }
+
+# 本地依赖
+pallet-matchmaking-common = { path = "../common", default-features = false }
+pallet-matchmaking-profile = { path = "../profile", default-features = false }
+pallet-matchmaking-matching = { path = "../matching", default-features = false }
+
+[dev-dependencies]
+sp-io = { workspace = true, features = ["std"] }
+pallet-balances = { workspace = true, features = ["std"] }
+pallet-timestamp = { workspace = true, features = ["std"] }
+
+[features]
+default = ["std"]
+std = [
+    "codec/std",
+    "scale-info/std",
+    "frame-benchmarking?/std",
+    "frame-support/std",
+    "frame-system/std",
+    "sp-runtime/std",
+    "sp-std/std",
+    "sp-core/std",
+    "pallet-matchmaking-common/std",
+    "pallet-matchmaking-profile/std",
+    "pallet-matchmaking-matching/std",
+    "log/std",
+]
+runtime-benchmarks = [
+    "frame-benchmarking/runtime-benchmarks",
+    "frame-support/runtime-benchmarks",
+    "frame-system/runtime-benchmarks",
+    "sp-runtime/runtime-benchmarks",
+]
+try-runtime = [
+    "frame-support/try-runtime",
+    "frame-system/try-runtime",
+    "sp-runtime/try-runtime",
+]

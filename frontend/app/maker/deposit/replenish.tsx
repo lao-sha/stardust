@@ -9,8 +9,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMakerStore } from '@/stores/maker.store';
@@ -18,6 +17,8 @@ import { useWalletStore } from '@/stores/wallet.store';
 import { MakerService } from '@/services/maker.service';
 import { PageHeader } from '@/components/PageHeader';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
+import { Card, Button, LoadingSpinner } from '@/components/common';
+import { useAsync } from '@/hooks';
 
 const DEPOSIT_TARGET_USD = 1050;
 const DEPOSIT_THRESHOLD_USD = 950;
@@ -29,7 +30,6 @@ export default function ReplenishPage() {
     depositUsdValue,
     dustPrice,
     replenishDeposit,
-    isSubmitting,
     txStatus,
     error,
     clearError,
@@ -37,6 +37,7 @@ export default function ReplenishPage() {
     fetchDustPrice,
   } = useMakerStore();
   const { balance } = useWalletStore();
+  const { execute, isLoading } = useAsync();
 
   const [showTxDialog, setShowTxDialog] = useState(false);
 
@@ -68,16 +69,14 @@ export default function ReplenishPage() {
   const statusConfig = getStatusConfig();
 
   const handleReplenish = async () => {
-    try {
-      setShowTxDialog(true);
+    setShowTxDialog(true);
+    await execute(async () => {
       await replenishDeposit();
       setTimeout(() => {
         setShowTxDialog(false);
         router.back();
       }, 1500);
-    } catch (err) {
-      // 错误已在 store 中处理
-    }
+    });
   };
 
   const handleCloseTxDialog = () => {
@@ -88,7 +87,7 @@ export default function ReplenishPage() {
   if (!makerApp) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#B2955D" />
+        <LoadingSpinner text="加载中..." />
       </View>
     );
   }
@@ -99,7 +98,7 @@ export default function ReplenishPage() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* 当前状态 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <Text style={styles.cardTitle}>当前状态</Text>
           <View style={styles.statusRow}>
             <View>
@@ -117,10 +116,10 @@ export default function ReplenishPage() {
               </Text>
             </View>
           </View>
-        </View>
+        </Card>
 
         {/* 补充计算 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <Text style={styles.cardTitle}>补充计算</Text>
           <View style={styles.calcRow}>
             <Text style={styles.calcLabel}>目标价值</Text>
@@ -142,10 +141,10 @@ export default function ReplenishPage() {
               (按当前价格 {dustPrice.toFixed(4)} USD/DUST)
             </Text>
           </View>
-        </View>
+        </Card>
 
         {/* 账户余额 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <Text style={styles.cardTitle}>您的可用余额</Text>
           <Text style={styles.balanceAmount}>
             {MakerService.formatDustAmount(balanceBigInt)} DUST
@@ -155,22 +154,15 @@ export default function ReplenishPage() {
               {isBalanceSufficient ? '✅ 余额充足' : '❌ 余额不足'}
             </Text>
           </View>
-        </View>
+        </Card>
 
         {/* 补充按钮 */}
-        <TouchableOpacity
-          style={[styles.submitButton, (!isBalanceSufficient || isSubmitting || replenishUsd <= 0) && styles.submitButtonDisabled]}
+        <Button
+          title={replenishUsd <= 0 ? '押金已充足' : '确认补充'}
           onPress={handleReplenish}
-          disabled={!isBalanceSufficient || isSubmitting || replenishUsd <= 0}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitButtonText}>
-              {replenishUsd <= 0 ? '押金已充足' : '确认补充'}
-            </Text>
-          )}
-        </TouchableOpacity>
+          loading={isLoading}
+          disabled={!isBalanceSufficient || isLoading || replenishUsd <= 0}
+        />
       </ScrollView>
 
       {/* 交易状态弹窗 */}
@@ -199,10 +191,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+  section: {
     marginBottom: 16,
   },
   cardTitle: {
@@ -303,20 +292,5 @@ const styles = StyleSheet.create({
   },
   statusTextError: {
     color: '#FF3B30',
-  },
-  submitButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#C9C9C9',
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

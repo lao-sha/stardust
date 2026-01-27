@@ -1909,7 +1909,7 @@ pub mod pallet {
             // Partial 模式验证：必须指定加密字段
             if privacy_mode == PrivacyMode::Partial {
                 ensure!(
-                    encrypted_fields.is_some() && encrypted_fields.unwrap() > 0,
+                    encrypted_fields.map(|f| f > 0).unwrap_or(false),
                     Error::<T>::PartialModeRequiresFields
                 );
             }

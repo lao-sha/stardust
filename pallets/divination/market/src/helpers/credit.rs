@@ -4,6 +4,7 @@
 
 use crate::*;
 use crate::types::*;
+use frame_system::pallet_prelude::BlockNumberFor;
 
 #[allow(dead_code)]
 impl<T: Config> Pallet<T> {

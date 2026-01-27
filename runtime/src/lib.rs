@@ -304,6 +304,10 @@ mod runtime {
 	#[runtime::pallet_index(30)]
 	pub type Tarot = pallet_tarot;
 
+	// 占卜会员模块
+	#[runtime::pallet_index(31)]
+	pub type DivinationMembership = pallet_divination_membership;
+
 	// ============================================================================
 	// Chat Pallets
 	// ============================================================================
@@ -350,7 +354,7 @@ mod runtime {
 	pub type AffiliateReferral = pallet_referral;
 
 	#[runtime::pallet_index(62)]
-	pub type StardustIpfs = pallet_stardust_ipfs;
+	pub type StorageService = pallet_storage_service;
 
 	#[runtime::pallet_index(63)]
 	pub type Evidence = pallet_evidence;
@@ -360,4 +364,14 @@ mod runtime {
 
 	#[runtime::pallet_index(65)]
 	pub type StorageLifecycle = pallet_storage_lifecycle;
+
+	// ============================================================================
+	// Matchmaking Pallets
+	// ============================================================================
+
+	#[runtime::pallet_index(80)]
+	pub type MatchmakingMembership = pallet_matchmaking_membership;
+
+	#[runtime::pallet_index(81)]
+	pub type MatchmakingProfile = pallet_matchmaking_profile;
 }

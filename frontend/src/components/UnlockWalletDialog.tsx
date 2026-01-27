@@ -18,15 +18,18 @@ import { unlockWalletForSigning } from '@/lib/signer';
 
 interface UnlockWalletDialogProps {
   visible: boolean;
-  onUnlock: () => void;
-  onCancel: () => void;
+  onUnlock: ((password: string) => void) | (() => void);
+  onCancel?: () => void;
+  onClose?: () => void;
 }
 
 export const UnlockWalletDialog: React.FC<UnlockWalletDialogProps> = ({
   visible,
   onUnlock,
   onCancel,
+  onClose,
 }) => {
+  const handleClose = onClose || onCancel || (() => {});
   const [password, setPassword] = useState('');
   const [isUnlocking, setIsUnlocking] = useState(false);
 
@@ -40,8 +43,14 @@ export const UnlockWalletDialog: React.FC<UnlockWalletDialogProps> = ({
 
     try {
       await unlockWalletForSigning(password);
+      const pwd = password;
       setPassword('');
-      onUnlock();
+      // 支持带 password 参数和不带参数两种调用方式
+      if (onUnlock.length > 0) {
+        (onUnlock as (password: string) => void)(pwd);
+      } else {
+        (onUnlock as () => void)();
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '密码错误';
       Alert.alert('错误', errorMessage);
@@ -52,7 +61,7 @@ export const UnlockWalletDialog: React.FC<UnlockWalletDialogProps> = ({
 
   const handleCancel = () => {
     setPassword('');
-    onCancel();
+    handleClose();
   };
 
   return (

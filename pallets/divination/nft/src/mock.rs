@@ -112,9 +112,32 @@ parameter_types! {
     pub const PlatformAccount: u64 = 999;
 }
 
+/// Mock ContentRegistry 实现
+pub struct MockContentRegistry;
+
+impl pallet_storage_service::ContentRegistry for MockContentRegistry {
+    fn register_content(
+        _domain: sp_std::vec::Vec<u8>,
+        _subject_id: u64,
+        _cid: sp_std::vec::Vec<u8>,
+        _tier: pallet_storage_service::PinTier,
+    ) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+    
+    fn is_domain_registered(_domain: &[u8]) -> bool {
+        true
+    }
+    
+    fn get_domain_subject_type(_domain: &[u8]) -> Option<pallet_storage_service::SubjectType> {
+        Some(pallet_storage_service::SubjectType::General)
+    }
+}
+
 impl pallet_divination_nft::Config for Test {
     type NftCurrency = Balances;
     type DivinationProvider = MockDivinationProvider;
+    type ContentRegistry = MockContentRegistry;
     type MaxNameLength = ConstU32<64>;
     type MaxCidLength = ConstU32<128>;
     type MaxCollectionsPerUser = ConstU32<50>;

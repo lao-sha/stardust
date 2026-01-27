@@ -56,6 +56,10 @@ mod mock;
 mod tests;
 
 pub use pallet::*;
+
+pub mod weights;
+pub use weights::WeightInfo;
+
 pub use shensha::*;
 pub use types::*;
 

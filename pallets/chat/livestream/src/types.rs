@@ -80,6 +80,42 @@ pub enum CoHostType {
     VideoAndAudio,
 }
 
+/// 直播间违规类型
+#[derive(
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Clone,
+    Copy,
+    RuntimeDebug,
+    PartialEq,
+    Eq,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+pub enum LiveRoomViolationType {
+    /// 轻微违规（5%）- 标题党、轻微误导
+    Minor,
+    /// 一般违规（10%）- 不当言论
+    Moderate,
+    /// 严重违规（30%）- 色情、暴力内容
+    Severe,
+    /// 特别严重（50%）- 诈骗、违法
+    Critical,
+}
+
+impl LiveRoomViolationType {
+    /// 获取扣除比例（基点，10000 = 100%）
+    pub fn slash_bps(&self) -> u16 {
+        match self {
+            LiveRoomViolationType::Minor => 500,       // 5%
+            LiveRoomViolationType::Moderate => 1000,   // 10%
+            LiveRoomViolationType::Severe => 3000,     // 30%
+            LiveRoomViolationType::Critical => 5000,   // 50%
+        }
+    }
+}
+
 /// 直播间信息
 #[derive(Encode, Decode, DecodeWithMemTracking, RuntimeDebug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(MaxTitleLen, MaxDescriptionLen, MaxCidLen))]

@@ -481,7 +481,7 @@ export const useTradingStore = create<TradingState>()((set, get) => ({
         return;
       }
 
-      const orders = await tradingService.getOrderHistory(currentAccount.address);
+      const orders = await tradingService.getOrderHistory(address);
       set({ orderHistory: orders });
     } catch (error) {
       console.error('[Trading] Fetch order history error:', error);
@@ -494,18 +494,27 @@ export const useTradingStore = create<TradingState>()((set, get) => ({
    */
   subscribeToOrder: (orderId: number) => {
     let unsubscribe: (() => void) | null = null;
+    let isCancelled = false;
 
     // 异步订阅
     tradingService.subscribeToOrder(orderId, (order) => {
-      set({ currentOrder: order });
+      if (!isCancelled) {
+        set({ currentOrder: order });
+      }
     }).then((unsub) => {
-      unsubscribe = unsub;
+      if (!isCancelled) {
+        unsubscribe = unsub;
+      } else {
+        // 如果已经取消，立即清理
+        unsub();
+      }
     }).catch((error) => {
       console.error('[Trading] Subscribe to order error:', error);
     });
 
     // 返回取消订阅函数
     return () => {
+      isCancelled = true;
       if (unsubscribe) {
         unsubscribe();
       }
@@ -579,7 +588,7 @@ export const useTradingStore = create<TradingState>()((set, get) => ({
         return;
       }
 
-      const credit = await tradingService.getBuyerCredit(currentAccount.address);
+      const credit = await tradingService.getBuyerCredit(address);
 
       set({ buyerCredit: credit, loadingCredit: false });
     } catch (error) {
@@ -601,7 +610,7 @@ export const useTradingStore = create<TradingState>()((set, get) => ({
         return;
       }
 
-      const hasCompleted = await tradingService.hasCompletedFirstPurchase(currentAccount.address);
+      const hasCompleted = await tradingService.hasCompletedFirstPurchase(address);
 
       set({
         hasCompletedFirstPurchase: hasCompleted,
@@ -629,7 +638,7 @@ export const useTradingStore = create<TradingState>()((set, get) => ({
         return;
       }
 
-      const result = await tradingService.checkKycStatus(currentAccount.address);
+      const result = await tradingService.checkKycStatus(address);
 
       set({
         kycStatus: result.status as KycStatus,

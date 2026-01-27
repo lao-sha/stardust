@@ -83,7 +83,7 @@ export default function ReviewsPage() {
     setRefreshing(false);
   };
 
-  const handleReply = (orderId: number) => {
+  const handleReply = async (orderId: number) => {
     Alert.prompt(
       '回复评价',
       '请输入您的回复内容',
@@ -91,13 +91,22 @@ export default function ReviewsPage() {
         { text: '取消', style: 'cancel' },
         {
           text: '提交',
-          onPress: (text) => {
+          onPress: async (text) => {
             if (text?.trim()) {
-              // TODO: 提交回复到链上
-              setReviews(prev =>
-                prev.map(r => (r.orderId === orderId ? { ...r, replyCid: 'QmNewReply...' } : r))
-              );
-              Alert.alert('成功', '回复已提交');
+              try {
+                const { divinationMarketService } = await import('@/services/divination-market.service');
+                // 找到对应的评价 ID（这里假设 orderId 就是 reviewId）
+                await divinationMarketService.replyReview(orderId, text.trim(), (status) => {
+                  console.log('Reply status:', status);
+                });
+                // 更新本地状态
+                setReviews(prev =>
+                  prev.map(r => (r.orderId === orderId ? { ...r, replyCid: 'QmNewReply...' } : r))
+                );
+                Alert.alert('成功', '回复已提交');
+              } catch (error: any) {
+                Alert.alert('回复失败', error.message || '请稍后重试');
+              }
             }
           },
         },

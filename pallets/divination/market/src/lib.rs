@@ -40,6 +40,9 @@
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 pub mod types;
 
 mod helpers;
@@ -62,6 +65,7 @@ pub mod pallet {
     use pallet_divination_common::{DivinationProvider, DivinationType};
     use pallet_affiliate::types::AffiliateDistributor;
     use pallet_trading_common::PricingProvider;
+    use pallet_chat_permission::{SceneAuthorizationManager, SceneType, SceneId};
     use sp_runtime::traits::{Saturating, Zero, SaturatedConversion};
     // 已移除 L1/L2 归档压缩，不再需要 amount_to_tier 和 block_to_year_month
     use sp_std::prelude::*;
@@ -76,7 +80,7 @@ pub mod pallet {
         type DivinationProvider: DivinationProvider<Self::AccountId>;
 
         /// IPFS 内容注册接口（用于自动 Pin 市场内容）
-        type ContentRegistry: pallet_stardust_ipfs::ContentRegistry;
+        type ContentRegistry: pallet_storage_service::ContentRegistry;
 
         /// 最小保证金（DUST数量）
         #[pallet::constant]
@@ -155,13 +159,17 @@ pub mod pallet {
             BlockNumberFor<Self>,
         >;
 
-        /// 🆕 平台抽成中用于联盟分成的比例（基点，5000 = 50%）
-        #[pallet::constant]
-        type AffiliateFeeRatio: Get<u16>;
 
         /// 🆕 解读修改窗口（区块数，28800 ≈ 2天，按6秒/块计算）
         #[pallet::constant]
         type InterpretationEditWindow: Get<BlockNumberFor<Self>>;
+
+        /// 🆕 聊天权限管理接口（订单创建时自动授权双方聊天）
+        type ChatPermission: SceneAuthorizationManager<Self::AccountId, BlockNumberFor<Self>>;
+
+        /// 🆕 订单聊天授权有效期（区块数，432000 ≈ 30天）
+        #[pallet::constant]
+        type OrderChatDuration: Get<BlockNumberFor<Self>>;
     }
 
     /// 货币余额类型别名
@@ -694,6 +702,34 @@ pub mod pallet {
         /// 提供者已注销
         ProviderDeactivated { provider: T::AccountId },
 
+        /// 提供者已封禁
+        ProviderBanned {
+            provider: T::AccountId,
+            reason: BoundedVec<u8, ConstU32<128>>,
+        },
+
+        /// 提供者保证金已扣除
+        ProviderDepositSlashed {
+            provider: T::AccountId,
+            order_id: u64,
+            amount: BalanceOf<T>,
+            to_customer: bool,
+        },
+
+        /// 提供者保证金已补充
+        ProviderDepositToppedUp {
+            provider: T::AccountId,
+            amount: BalanceOf<T>,
+            new_total: BalanceOf<T>,
+        },
+
+        /// 提供者保证金不足警告
+        ProviderDepositInsufficient {
+            provider: T::AccountId,
+            current: BalanceOf<T>,
+            required: BalanceOf<T>,
+        },
+
         /// 提供者等级已提升
         ProviderTierUpgraded {
             provider: T::AccountId,
@@ -992,14 +1028,6 @@ pub mod pallet {
             provider: T::AccountId,
             task_type: RepairTaskType,
             target_value: u32,
-        },
-
-        /// 投诉裁决后扣除提供者保证金
-        ProviderDepositSlashed {
-            provider: T::AccountId,
-            order_id: u64,
-            amount: BalanceOf<T>,
-            to_customer: bool,
         },
 
         /// 投诉裁决后订单退款
@@ -1319,11 +1347,11 @@ pub mod pallet {
                     u64::from_le_bytes(arr)
                 });
 
-                <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+                <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                     b"divination-market".to_vec(),
                     subject_id,
                     cid.clone(),
-                    pallet_stardust_ipfs::PinTier::Standard,
+                    pallet_storage_service::PinTier::Standard,
                 )?;
             }
 
@@ -1398,6 +1426,14 @@ pub mod pallet {
                     provider.status == ProviderStatus::Paused,
                     Error::<T>::InvalidProviderStatus
                 );
+                
+                // 检查保证金是否达到最低要求
+                let min_deposit = T::MinDeposit::get();
+                ensure!(
+                    provider.deposit >= min_deposit,
+                    Error::<T>::InsufficientDeposit
+                );
+                
                 provider.status = ProviderStatus::Active;
                 provider.last_active_at = <frame_system::Pallet<T>>::block_number();
                 Ok::<_, DispatchError>(())
@@ -1406,6 +1442,46 @@ pub mod pallet {
             MarketStatistics::<T>::mutate(|s| s.active_providers += 1);
 
             Self::deposit_event(Event::ProviderResumed { provider: who });
+
+            Ok(())
+        }
+
+        /// 补充保证金
+        /// 
+        /// 当保证金因违规被扣除后，提供者可以补充保证金以恢复正常接单
+        #[pallet::call_index(41)]
+        #[pallet::weight(Weight::from_parts(30_000_000, 0))]
+        pub fn top_up_deposit(origin: OriginFor<T>, amount: BalanceOf<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let mut provider = Providers::<T>::get(&who).ok_or(Error::<T>::ProviderNotFound)?;
+
+            // 不能是已封禁状态
+            ensure!(
+                provider.status != ProviderStatus::Banned,
+                Error::<T>::ProviderBanned
+            );
+
+            // 锁定保证金
+            T::Currency::reserve(&who, amount)?;
+
+            // 更新保证金
+            provider.deposit = provider.deposit.saturating_add(amount);
+            let new_total = provider.deposit;
+
+            // 检查是否达到最低要求，如果达到且之前是暂停状态，可以恢复
+            let min_deposit = T::MinDeposit::get();
+            if provider.deposit >= min_deposit && provider.status == ProviderStatus::Paused {
+                // 保证金已达标，可以恢复接单（需要手动调用 resume_provider）
+            }
+
+            Providers::<T>::insert(&who, provider);
+
+            Self::deposit_event(Event::ProviderDepositToppedUp {
+                provider: who,
+                amount,
+                new_total,
+            });
 
             Ok(())
         }
@@ -1671,11 +1747,11 @@ pub mod pallet {
             NextOrderId::<T>::put(order_id.saturating_add(1));
 
             // 🆕 自动 Pin 问题描述到 IPFS (Temporary 层级)
-            <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+            <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                 b"divination-market".to_vec(),
                 order_id,
                 question_cid,
-                pallet_stardust_ipfs::PinTier::Temporary,
+                pallet_storage_service::PinTier::Temporary,
             )?;
 
             let block_number = <frame_system::Pallet<T>>::block_number();
@@ -1730,6 +1806,21 @@ pub mod pallet {
                 s.order_count += 1;
                 s.volume = s.volume.saturating_add(amount);
             });
+
+            // 🆕 自动授权双方聊天（订单场景）
+            // 允许命主和命理师在订单期间相互发送消息
+            let chat_duration = T::OrderChatDuration::get();
+            let metadata = sp_std::vec![]; // 可扩展：添加订单金额等信息
+            let _ = T::ChatPermission::grant_bidirectional_scene_authorization(
+                *b"div_mrkt",  // 来源标识：divination-market
+                &who,
+                &provider_account,
+                SceneType::Order,
+                SceneId::Numeric(order_id),
+                Some(chat_duration),
+                metadata,
+            );
+            // 注意：聊天授权失败不应阻止订单创建，因此使用 let _ 忽略错误
 
             Self::deposit_event(Event::OrderCreated {
                 order_id,
@@ -1806,6 +1897,15 @@ pub mod pallet {
                     o.status = OrderStatus::Cancelled;
                 }
             });
+
+            // 🆕 订单被拒绝时撤销聊天授权
+            let _ = T::ChatPermission::revoke_scene_authorization(
+                *b"div_mrkt",
+                &order.customer,
+                &who,
+                SceneType::Order,
+                SceneId::Numeric(order_id),
+            );
 
             Self::deposit_event(Event::OrderRejected {
                 order_id,
@@ -1981,18 +2081,14 @@ pub mod pallet {
                 s.completed_count += 1;
             });
             
-            // 4. 联盟分成
-            let affiliate_ratio = T::AffiliateFeeRatio::get();
-            let affiliate_amount = platform_fee
-                .saturating_mul(affiliate_ratio.into())
-                / 10000u32.into();
-            
-            if !affiliate_amount.is_zero() {
-                let affiliate_u128: u128 = affiliate_amount.saturated_into();
+            // 4. 平台抽成全部通过联盟分成资金流向处理
+            // 资金流向：销毁 5% + 国库 2% + 存储 3% + 推荐链 90%
+            if !platform_fee.is_zero() {
+                let platform_fee_u128: u128 = platform_fee.saturated_into();
                 
                 if let Ok(distributed_u128) = T::AffiliateDistributor::distribute_rewards(
                     &customer,
-                    affiliate_u128,
+                    platform_fee_u128,
                     Some((15, order_id)),
                 ) {
                     let distributed: BalanceOf<T> = distributed_u128.saturated_into();
@@ -2014,6 +2110,17 @@ pub mod pallet {
             PendingInterpretationQueue::<T>::mutate(|queue| {
                 queue.retain(|id| *id != order_id);
             });
+
+            // 🆕 订单完成后撤销聊天授权（可选：保留一段时间供追问）
+            // 注意：这里不立即撤销，让授权自然过期，以便用户可以追问
+            // 如需立即撤销，取消下面的注释：
+            // let _ = T::ChatPermission::revoke_scene_authorization(
+            //     *b"div_mrkt",
+            //     &customer,
+            //     &provider,
+            //     SceneType::Order,
+            //     SceneId::Numeric(order_id),
+            // );
             
             // 6. 发送事件
             Self::deposit_event(Event::InterpretationConfirmed {
@@ -2154,11 +2261,11 @@ pub mod pallet {
             let follow_up_count = FollowUps::<T>::get(order_id).len() as u64;
             let subject_id = order_id.saturating_mul(1000).saturating_add(follow_up_count);
 
-            <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+            <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                 b"divination-market".to_vec(),
                 subject_id,
                 question_cid,
-                pallet_stardust_ipfs::PinTier::Temporary,
+                pallet_storage_service::PinTier::Temporary,
             )?;
 
             let follow_up = FollowUp {
@@ -2203,11 +2310,11 @@ pub mod pallet {
             // 🆕 自动 Pin 追问回复到 IPFS (Temporary 层级)
             let subject_id = order_id.saturating_mul(1000).saturating_add(follow_up_index as u64).saturating_add(500);
 
-            <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+            <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                 b"divination-market".to_vec(),
                 subject_id,
                 reply_cid,
-                pallet_stardust_ipfs::PinTier::Temporary,
+                pallet_storage_service::PinTier::Temporary,
             )?;
 
             FollowUps::<T>::try_mutate(order_id, |list| {
@@ -2285,11 +2392,11 @@ pub mod pallet {
 
             // 🆕 如果有评价内容 CID，Pin 到 IPFS (Temporary 层级)
             if let Some(ref cid) = content_cid {
-                <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+                <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                     b"divination-market".to_vec(),
                     order_id,
                     cid.clone(),
-                    pallet_stardust_ipfs::PinTier::Temporary,
+                    pallet_storage_service::PinTier::Temporary,
                 )?;
             }
 
@@ -2361,11 +2468,11 @@ pub mod pallet {
                 BoundedVec::try_from(reply_cid.clone()).map_err(|_| Error::<T>::CidTooLong)?;
 
             // 🆕 Pin 评价回复到 IPFS (Temporary 层级)
-            <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+            <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                 b"divination-market".to_vec(),
                 order_id,
                 reply_cid,
-                pallet_stardust_ipfs::PinTier::Temporary,
+                pallet_storage_service::PinTier::Temporary,
             )?;
 
             Reviews::<T>::try_mutate(order_id, |maybe_review| {
@@ -2540,11 +2647,11 @@ pub mod pallet {
             NextBountyId::<T>::put(bounty_id.saturating_add(1));
 
             // 🆕 自动 Pin 悬赏问题到 IPFS (Temporary 层级)
-            <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+            <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                 b"divination-market".to_vec(),
                 bounty_id,
                 question_cid,
-                pallet_stardust_ipfs::PinTier::Temporary,
+                pallet_storage_service::PinTier::Temporary,
             )?;
 
             let bounty = BountyQuestion {
@@ -2666,11 +2773,11 @@ pub mod pallet {
             NextBountyAnswerId::<T>::put(answer_id.saturating_add(1));
 
             // 🆕 自动 Pin 悬赏回答到 IPFS (Standard 层级)
-            <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+            <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                 b"divination-market".to_vec(),
                 answer_id,
                 answer_cid,
-                pallet_stardust_ipfs::PinTier::Standard,
+                pallet_storage_service::PinTier::Standard,
             )?;
 
             let answer = BountyAnswer {
@@ -3222,11 +3329,11 @@ pub mod pallet {
                     u64::from_le_bytes(arr)
                 });
 
-                <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+                <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                     b"divination-market".to_vec(),
                     subject_id,
                     cid.clone(),
-                    pallet_stardust_ipfs::PinTier::Standard,
+                    pallet_storage_service::PinTier::Standard,
                 )?;
             }
 
@@ -3238,35 +3345,29 @@ pub mod pallet {
                     u64::from_le_bytes(arr)
                 });
 
-                <T::ContentRegistry as pallet_stardust_ipfs::ContentRegistry>::register_content(
+                <T::ContentRegistry as pallet_storage_service::ContentRegistry>::register_content(
                     b"divination-market".to_vec(),
                     subject_id,
                     cid.clone(),
-                    pallet_stardust_ipfs::PinTier::Standard,
+                    pallet_storage_service::PinTier::Standard,
                 )?;
             }
 
             let current_block = <frame_system::Pallet<T>>::block_number();
 
             ProviderProfiles::<T>::try_mutate(&who, |maybe_profile| {
-                let profile = match maybe_profile {
-                    Some(p) => p,
-                    None => {
-                        *maybe_profile = Some(ProviderProfile {
-                            introduction_cid: None,
-                            experience_years: 0,
-                            background: None,
-                            motto: None,
-                            expertise_description: None,
-                            working_hours: None,
-                            avg_response_time: None,
-                            accepts_appointment: false,
-                            banner_cid: None,
-                            updated_at: current_block,
-                        });
-                        maybe_profile.as_mut().unwrap()
-                    }
-                };
+                let profile = maybe_profile.get_or_insert_with(|| ProviderProfile {
+                    introduction_cid: None,
+                    experience_years: 0,
+                    background: None,
+                    motto: None,
+                    expertise_description: None,
+                    working_hours: None,
+                    avg_response_time: None,
+                    accepts_appointment: false,
+                    banner_cid: None,
+                    updated_at: current_block,
+                });
 
                 if let Some(cid) = introduction_cid {
                     profile.introduction_cid = Some(
@@ -3758,7 +3859,7 @@ pub mod pallet {
                 id: violation_id,
                 provider: provider.clone(),
                 violation_type,
-                reason: reason_bounded,
+                reason: reason_bounded.clone(),
                 related_order_id,
                 deduction_points,
                 penalty,
@@ -3810,14 +3911,119 @@ pub mod pallet {
                 }
             });
 
+            // 根据处罚类型扣除保证金（非封禁情况）
+            let deposit_slash_bps: u16 = match &penalty {
+                PenaltyType::DeductionOnly => 0,      // 0%
+                PenaltyType::Warning => 500,          // 5%
+                PenaltyType::OrderRestriction => 1000, // 10%
+                PenaltyType::ServiceSuspension => 2000, // 20%
+                PenaltyType::PermanentBan => 10000,   // 100% (在下面单独处理)
+            };
+
+            if deposit_slash_bps > 0 && penalty != PenaltyType::PermanentBan {
+                if let Some(p) = Providers::<T>::get(&provider) {
+                    if !p.deposit.is_zero() {
+                        // 计算扣除金额
+                        let slash_amount = p.deposit
+                            .saturating_mul(deposit_slash_bps.into())
+                            / 10000u32.into();
+                        
+                        if !slash_amount.is_zero() {
+                            // 解除锁定
+                            T::Currency::unreserve(&provider, slash_amount);
+                            
+                            // 根据是否有关联订单决定资金流向
+                            let (to_customer, target) = if let Some(order_id) = related_order_id {
+                                if let Some(order) = Orders::<T>::get(order_id) {
+                                    (true, order.customer)
+                                } else {
+                                    (false, T::TreasuryAccount::get())
+                                }
+                            } else {
+                                (false, T::TreasuryAccount::get())
+                            };
+                            
+                            let _ = T::Currency::transfer(
+                                &provider,
+                                &target,
+                                slash_amount,
+                                ExistenceRequirement::AllowDeath,
+                            );
+                            
+                            // 更新提供者保证金
+                            let new_deposit = p.deposit.saturating_sub(slash_amount);
+                            Providers::<T>::mutate(&provider, |maybe_p| {
+                                if let Some(prov) = maybe_p {
+                                    prov.deposit = new_deposit;
+                                    
+                                    // 如果保证金低于最低要求，自动暂停服务
+                                    let min_deposit = T::MinDeposit::get();
+                                    if new_deposit < min_deposit && prov.status == ProviderStatus::Active {
+                                        prov.status = ProviderStatus::Paused;
+                                    }
+                                }
+                            });
+                            
+                            Self::deposit_event(Event::ProviderDepositSlashed {
+                                provider: provider.clone(),
+                                order_id: related_order_id.unwrap_or(0),
+                                amount: slash_amount,
+                                to_customer,
+                            });
+                            
+                            // 检查保证金是否不足并发出警告
+                            let min_deposit = T::MinDeposit::get();
+                            if new_deposit < min_deposit {
+                                Self::deposit_event(Event::ProviderDepositInsufficient {
+                                    provider: provider.clone(),
+                                    current: new_deposit,
+                                    required: min_deposit,
+                                });
+                                
+                                // 更新统计
+                                MarketStatistics::<T>::mutate(|s| {
+                                    s.active_providers = s.active_providers.saturating_sub(1);
+                                });
+                                
+                                Self::deposit_event(Event::ProviderPaused { provider: provider.clone() });
+                            }
+                        }
+                    }
+                }
+            }
+
             // 处理永久封禁
             if penalty == PenaltyType::PermanentBan {
                 CreditBlacklist::<T>::insert(&provider, current_block);
+
+                // 扣除保证金并转入国库
+                if let Some(p) = Providers::<T>::get(&provider) {
+                    if !p.deposit.is_zero() {
+                        // 解除锁定
+                        T::Currency::unreserve(&provider, p.deposit);
+                        // 转入国库
+                        let treasury = T::TreasuryAccount::get();
+                        let _ = T::Currency::transfer(
+                            &provider,
+                            &treasury,
+                            p.deposit,
+                            ExistenceRequirement::AllowDeath,
+                        );
+                        
+                        Self::deposit_event(Event::ProviderDepositSlashed {
+                            provider: provider.clone(),
+                            order_id: 0, // 封禁时无关联订单
+                            amount: p.deposit,
+                            to_customer: false,
+                        });
+                    }
+                }
 
                 // 更新提供者状态
                 Providers::<T>::mutate(&provider, |maybe_p| {
                     if let Some(p) = maybe_p {
                         p.status = ProviderStatus::Banned;
+                        p.deposit = Zero::zero();
                     }
                 });
 
@@ -3825,6 +4031,16 @@ pub mod pallet {
                     stats.blacklisted_count = stats.blacklisted_count.saturating_add(1);
                 });
 
+                // 转换 reason 类型
+                let ban_reason: BoundedVec<u8, ConstU32<128>> = reason_bounded
+                    .clone()
+                    .into_inner()
+                    .try_into()
+                    .unwrap_or_default();
+                Self::deposit_event(Event::ProviderBanned {
+                    provider: provider.clone(),
+                    reason: ban_reason,
+                });
                 Self::deposit_event(Event::AddedToBlacklist { provider: provider.clone() });
             }
 

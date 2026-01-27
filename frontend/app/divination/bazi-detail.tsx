@@ -16,7 +16,10 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomNavBar } from '@/components/BottomNavBar';
+import { UnlockWalletDialog } from '@/components/UnlockWalletDialog';
+import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
 import { divinationService } from '@/services/divination.service';
+import { isSignerUnlocked, unlockWalletForSigning } from '@/lib/signer';
 import {
   calculateDaYun,
   calculateLiuNian,
@@ -114,6 +117,10 @@ export default function BaziDetailPage() {
 
   const [fullInterpretation, setFullInterpretation] = useState<any>(null);
   const [loadingFull, setLoadingFull] = useState(false);
+  const [showUnlockDialog, setShowUnlockDialog] = useState(false);
+  const [showTxStatus, setShowTxStatus] = useState(false);
+  const [txStatus, setTxStatus] = useState('');
+  const [pendingAction, setPendingAction] = useState<'delete' | 'cache' | null>(null);
 
   // 获取完整解盘
   useEffect(() => {
@@ -142,6 +149,104 @@ export default function BaziDetailPage() {
     };
     fetchFull();
   }, [result?.id]);
+
+  // 删除命盘
+  const handleDelete = () => {
+    if (!result?.id || result.id > 1000000000) {
+      Alert.alert('提示', '该命盘为临时数据，无需删除');
+      return;
+    }
+
+    Alert.alert(
+      '确认删除',
+      '删除后无法恢复，确定要删除该命盘吗？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: () => {
+            if (!isSignerUnlocked()) {
+              setPendingAction('delete');
+              setShowUnlockDialog(true);
+              return;
+            }
+            executeDelete();
+          },
+        },
+      ]
+    );
+  };
+
+  const executeDelete = async () => {
+    if (!result?.id) return;
+
+    setShowTxStatus(true);
+    setTxStatus('正在删除命盘...');
+
+    try {
+      await divinationService.deleteBaziChart(result.id, (status) => setTxStatus(status));
+
+      setTxStatus('删除成功！');
+      setTimeout(() => {
+        setShowTxStatus(false);
+        router.back();
+      }, 1500);
+    } catch (error: any) {
+      setShowTxStatus(false);
+      Alert.alert('删除失败', error.message || '请稍后重试');
+    }
+  };
+
+  // 缓存解盘结果
+  const handleCacheInterpretation = () => {
+    if (!result?.id || result.id > 1000000000) {
+      Alert.alert('提示', '该命盘为临时数据，无法缓存');
+      return;
+    }
+
+    if (!isSignerUnlocked()) {
+      setPendingAction('cache');
+      setShowUnlockDialog(true);
+      return;
+    }
+
+    executeCacheInterpretation();
+  };
+
+  const executeCacheInterpretation = async () => {
+    if (!result?.id) return;
+
+    setShowTxStatus(true);
+    setTxStatus('正在缓存解盘结果...');
+
+    try {
+      await divinationService.cacheInterpretation(result.id, (status) => setTxStatus(status));
+
+      setTxStatus('缓存成功！');
+      setTimeout(() => {
+        setShowTxStatus(false);
+      }, 1500);
+    } catch (error: any) {
+      setShowTxStatus(false);
+      Alert.alert('缓存失败', error.message || '请稍后重试');
+    }
+  };
+
+  const handleWalletUnlocked = async (password: string) => {
+    try {
+      await unlockWalletForSigning(password);
+      setShowUnlockDialog(false);
+      if (pendingAction === 'delete') {
+        await executeDelete();
+      } else if (pendingAction === 'cache') {
+        await executeCacheInterpretation();
+      }
+      setPendingAction(null);
+    } catch (error: any) {
+      Alert.alert('解锁失败', error.message || '密码错误');
+    }
+  };
 
   if (!result) {
     return (
@@ -843,7 +948,9 @@ export default function BaziDetailPage() {
           <Ionicons name="chevron-back" size={24} color="#333" />
         </Pressable>
         <Text style={styles.navTitle}>命盘详情</Text>
-        <View style={{ width: 24 }} />
+        <Pressable style={styles.moreButton} onPress={handleDelete}>
+          <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
+        </Pressable>
       </View>
 
       {/* 模式切换 */}
@@ -902,6 +1009,28 @@ export default function BaziDetailPage() {
         )}
       </ScrollView>
 
+      {/* 操作按钮 */}
+      {result?.id && result.id < 1000000000 && (
+        <View style={styles.actionBar}>
+          <Pressable style={styles.cacheButton} onPress={handleCacheInterpretation}>
+            <Ionicons name="cloud-upload-outline" size={18} color={THEME_COLOR} />
+            <Text style={styles.cacheButtonText}>缓存解盘</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <UnlockWalletDialog
+        visible={showUnlockDialog}
+        onClose={() => setShowUnlockDialog(false)}
+        onUnlock={handleWalletUnlocked}
+      />
+
+      <TransactionStatusDialog
+        visible={showTxStatus}
+        status={txStatus}
+        onClose={() => setShowTxStatus(false)}
+      />
+
       {/* 底部导航栏 */}
       <BottomNavBar activeTab="divination" />
     </View>
@@ -928,6 +1057,9 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0F0F0',
   },
   backButton: {
+    padding: 4,
+  },
+  moreButton: {
     padding: 4,
   },
   navTitle: {
@@ -1637,5 +1769,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#333',
     lineHeight: 18,
+  },
+  actionBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  cacheButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F4E8',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6,
+  },
+  cacheButtonText: {
+    fontSize: 14,
+    color: THEME_COLOR,
+    fontWeight: '500',
   },
 });

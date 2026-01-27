@@ -548,6 +548,32 @@ export class ChatService {
   }
 
   /**
+   * 获取当前用户的 ChatUserId
+   * @returns ChatUserId 或 null（如果未注册）
+   */
+  async getMyChatUserId(): Promise<ChatUserId | null> {
+    if (!this.api) throw new Error('API not initialized');
+
+    const result = await this.api.query.chat.accountToChatUserId(this.myAddress);
+    if (result.isNone) {
+      return null;
+    }
+    return result.unwrap().toNumber();
+  }
+
+  /**
+   * 获取当前用户的完整资料
+   * @returns ChatUserProfile 或 null（如果未注册）
+   */
+  async getMyProfile(): Promise<ChatUserProfile | null> {
+    const chatUserId = await this.getMyChatUserId();
+    if (chatUserId === null) {
+      return null;
+    }
+    return this.getUserProfile(chatUserId);
+  }
+
+  /**
    * 清理资源
    */
   destroy(): void {

@@ -36,10 +36,92 @@ interface PinHashData {
 }
 
 /**
+ * 自动锁定配置
+ */
+const AUTO_LOCK_CONFIG = {
+  /** 自动锁定超时时间（毫秒）- 5分钟 */
+  TIMEOUT_MS: 5 * 60 * 1000,
+  /** 活动检测间隔（毫秒）- 30秒 */
+  CHECK_INTERVAL_MS: 30 * 1000,
+} as const;
+
+/**
  * 安全存储服务
+ * 
+ * 安全特性：
+ * - 5分钟无操作自动锁定
+ * - 页面卸载时强制清理密钥
+ * - 敏感数据使用后立即清零
  */
 export class SecureStorageService {
   private cachedEncryptionKey: Uint8Array | null = null;
+  private lastActivityTime: number = 0;
+  private autoLockTimer: ReturnType<typeof setInterval> | null = null;
+  private isInitialized: boolean = false;
+
+  constructor() {
+    this.setupAutoLock();
+  }
+
+  /**
+   * 设置自动锁定机制
+   */
+  private setupAutoLock(): void {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+
+    // 页面卸载时强制清理
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        this.clearCachedKey();
+      });
+
+      // 页面隐藏时也清理（移动端切换应用）
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          // 页面隐藏超过1分钟后清理
+          setTimeout(() => {
+            if (document.visibilityState === 'hidden') {
+              this.clearCachedKey();
+            }
+          }, 60 * 1000);
+        }
+      });
+
+      // 监听用户活动
+      const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+      activityEvents.forEach(event => {
+        window.addEventListener(event, () => this.recordActivity(), { passive: true });
+      });
+    }
+
+    // 定期检查是否需要自动锁定
+    this.autoLockTimer = setInterval(() => {
+      this.checkAutoLock();
+    }, AUTO_LOCK_CONFIG.CHECK_INTERVAL_MS);
+  }
+
+  /**
+   * 记录用户活动时间
+   */
+  private recordActivity(): void {
+    this.lastActivityTime = Date.now();
+  }
+
+  /**
+   * 检查是否需要自动锁定
+   */
+  private checkAutoLock(): void {
+    if (!this.cachedEncryptionKey) return;
+
+    const now = Date.now();
+    const idleTime = now - this.lastActivityTime;
+
+    if (idleTime >= AUTO_LOCK_CONFIG.TIMEOUT_MS) {
+      console.log('[SecureStorage] Auto-locking due to inactivity');
+      this.clearCachedKey();
+    }
+  }
 
   /**
    * 检查是否已初始化钱包
@@ -155,8 +237,15 @@ export class SecureStorageService {
       iterations
     );
 
-    // 缓存加密密钥
+    // 清除旧的缓存密钥
+    this.clearCachedKey();
+
+    // 缓存新的加密密钥
     this.cachedEncryptionKey = key.slice(0, SECURITY_PARAMS.KEY_LENGTH);
+    
+    // 记录活动时间（重置自动锁定计时器）
+    this.recordActivity();
+
     return this.cachedEncryptionKey;
   }
 
@@ -164,7 +253,24 @@ export class SecureStorageService {
    * 获取缓存的加密密钥
    */
   getCachedEncryptionKey(): Uint8Array | null {
+    // 检查是否已超时
+    if (this.cachedEncryptionKey) {
+      const idleTime = Date.now() - this.lastActivityTime;
+      if (idleTime >= AUTO_LOCK_CONFIG.TIMEOUT_MS) {
+        this.clearCachedKey();
+        return null;
+      }
+      // 记录活动
+      this.recordActivity();
+    }
     return this.cachedEncryptionKey;
+  }
+
+  /**
+   * 检查钱包是否已解锁
+   */
+  isUnlocked(): boolean {
+    return this.getCachedEncryptionKey() !== null;
   }
 
   /**
@@ -172,9 +278,22 @@ export class SecureStorageService {
    */
   clearCachedKey(): void {
     if (this.cachedEncryptionKey) {
-      // 安全清除内存
+      // 安全清除内存：先用随机数覆盖，再填零
+      crypto.getRandomValues(this.cachedEncryptionKey);
       this.cachedEncryptionKey.fill(0);
       this.cachedEncryptionKey = null;
+      console.log('[SecureStorage] Encryption key cleared from memory');
+    }
+  }
+
+  /**
+   * 销毁服务（清理所有资源）
+   */
+  destroy(): void {
+    this.clearCachedKey();
+    if (this.autoLockTimer) {
+      clearInterval(this.autoLockTimer);
+      this.autoLockTimer = null;
     }
   }
 
@@ -222,7 +341,7 @@ export class SecureStorageService {
 
     try {
       const decrypted = await this.decrypt(
-        walletData.encryptedData,
+        walletData.encryptedData || '',
         encryptionKey
       );
       return JSON.parse(decrypted);

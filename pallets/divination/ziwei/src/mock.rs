@@ -84,12 +84,6 @@ impl pallet_timestamp::Config for Test {
 parameter_types! {
     /// 国库账户
     pub const TreasuryAccount: u64 = 100;
-    /// 每 KB 存储押金（测试值：100）
-    pub const StorageDepositPerKb: u128 = 100;
-    /// 最小存储押金（测试值：10）
-    pub const MinStorageDeposit: u128 = 10;
-    /// 最大存储押金（测试值：100_000_000）
-    pub const MaxStorageDeposit: u128 = 100_000_000;
 }
 
 /// 测试用随机数生成器
@@ -106,9 +100,6 @@ impl frame_support::traits::Randomness<H256, u64> for TestRandomness {
 }
 
 /// 紫微斗数 Pallet 配置
-///
-/// 注：RuntimeEvent 关联类型已从 Polkadot SDK 2506 版本开始自动附加，
-/// 无需在此显式声明
 impl pallet_ziwei::Config for Test {
     type Currency = Balances;
     type Randomness = TestRandomness;
@@ -121,10 +112,6 @@ impl pallet_ziwei::Config for Test {
     type AiOracleOrigin = EnsureRoot<u64>;
     type MaxCidLen = ConstU32<64>;
     type MaxEncryptedLen = ConstU32<512>;
-    // 存储押金相关配置
-    type StorageDepositPerKb = StorageDepositPerKb;
-    type MinStorageDeposit = MinStorageDeposit;
-    type MaxStorageDeposit = MaxStorageDeposit;
 }
 
 /// 测试账户 ID

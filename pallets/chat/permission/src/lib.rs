@@ -35,6 +35,9 @@
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 mod traits;
 mod types;
 pub mod runtime_api;

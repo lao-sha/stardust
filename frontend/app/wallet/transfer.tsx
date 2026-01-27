@@ -10,17 +10,19 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  TextInput,
   ScrollView,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useWalletStore } from '@/stores';
 import { BottomNavBar } from '@/components/BottomNavBar';
+import { Card, Button, Input, LoadingSpinner } from '@/components/common';
+import { useAsync, useClipboard, useWallet } from '@/hooks';
+import { getApi } from '@/lib/api';
+import { signAndSend } from '@/lib/signer';
 
 // 主题色
 const THEME_COLOR = '#B2955D';
@@ -29,44 +31,61 @@ const THEME_BG = '#F5F5F7';
 
 export default function TransferPage() {
   const router = useRouter();
-  const { address } = useWalletStore();
+  const { address, balance, isUnlocked, ensureUnlocked } = useWallet();
+  const { execute, isLoading } = useAsync();
+  const { getFromClipboard } = useClipboard();
 
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [memo, setMemo] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-
-  // 模拟余额
-  const balance = '0.00';
+  const [recipientError, setRecipientError] = useState('');
+  const [amountError, setAmountError] = useState('');
 
   const isValidAddress = (addr: string) => {
     // Substrate 地址以 5 开头，长度 48
     return addr.startsWith('5') && addr.length === 48;
   };
 
-  const handleTransfer = async () => {
+  const validateForm = (): boolean => {
+    let isValid = true;
+
     // 验证收款地址
     if (!recipient) {
-      Alert.alert('提示', '请输入收款地址');
-      return;
-    }
-    if (!isValidAddress(recipient)) {
-      Alert.alert('提示', '收款地址格式不正确');
-      return;
-    }
-    if (recipient === address) {
-      Alert.alert('提示', '不能转账给自己');
-      return;
+      setRecipientError('请输入收款地址');
+      isValid = false;
+    } else if (!isValidAddress(recipient)) {
+      setRecipientError('收款地址格式不正确');
+      isValid = false;
+    } else if (recipient === address) {
+      setRecipientError('不能转账给自己');
+      isValid = false;
+    } else {
+      setRecipientError('');
     }
 
     // 验证金额
     const amountNum = parseFloat(amount);
+    const balanceNum = Number(balance) / 1e12;
     if (!amount || isNaN(amountNum) || amountNum <= 0) {
-      Alert.alert('提示', '请输入有效的转账金额');
-      return;
+      setAmountError('请输入有效的转账金额');
+      isValid = false;
+    } else if (amountNum > balanceNum) {
+      setAmountError('余额不足');
+      isValid = false;
+    } else {
+      setAmountError('');
     }
-    if (amountNum > parseFloat(balance)) {
-      Alert.alert('提示', '余额不足');
+
+    return isValid;
+  };
+
+  const handleTransfer = async () => {
+    if (!validateForm()) return;
+
+    // 确保钱包已解锁
+    const unlocked = await ensureUnlocked();
+    if (!unlocked) {
+      Alert.alert('提示', '请先解锁钱包');
       return;
     }
 
@@ -78,21 +97,46 @@ export default function TransferPage() {
         { text: '取消', style: 'cancel' },
         {
           text: '确认',
-          onPress: async () => {
-            setIsLoading(true);
-            try {
-              // TODO: 实现实际转账逻辑
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              Alert.alert('提示', '转账功能即将上线，敬请期待！');
-            } catch (error) {
-              Alert.alert('转账失败', '请稍后重试');
-            } finally {
-              setIsLoading(false);
-            }
-          },
+          onPress: () => executeTransfer(),
         },
       ]
     );
+  };
+
+  const executeTransfer = async () => {
+    try {
+      await execute(async () => {
+        const api = await getApi();
+        const amountBigInt = BigInt(Math.floor(parseFloat(amount) * 1e12));
+
+        const tx = api.tx.balances.transfer(recipient, amountBigInt.toString());
+
+        await signAndSend(api, tx, address!, (status) => {
+          console.log('Transfer status:', status);
+        });
+
+        Alert.alert('成功', '转账已提交', [
+          {
+            text: '查看记录',
+            onPress: () => router.push('/wallet/transactions' as any),
+          },
+          { text: '确定', style: 'cancel' },
+        ]);
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '转账失败';
+      Alert.alert('转账失败', errorMessage);
+    }
+  };
+
+  const handlePasteAddress = async () => {
+    const text = await getFromClipboard();
+    if (text && isValidAddress(text)) {
+      setRecipient(text);
+      setRecipientError('');
+    } else {
+      Alert.alert('提示', '剪贴板中没有有效的地址');
+    }
   };
 
   const handleScanQR = () => {
@@ -100,7 +144,9 @@ export default function TransferPage() {
   };
 
   const handleMaxAmount = () => {
-    setAmount(balance);
+    const balanceNum = (Number(balance) / 1e12).toFixed(4);
+    setAmount(balanceNum);
+    setAmountError('');
   };
 
   return (
@@ -119,88 +165,82 @@ export default function TransferPage() {
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* 余额显示 */}
-        <View style={styles.balanceCard}>
+        <Card style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>可用余额</Text>
-          <Text style={styles.balanceAmount}>{balance} DUST</Text>
-        </View>
+          <Text style={styles.balanceAmount}>
+            {(Number(balance) / 1e12).toFixed(4)} DUST
+          </Text>
+        </Card>
 
         {/* 表单卡片 */}
-        <View style={styles.formCard}>
+        <Card>
           {/* 收款地址 */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>收款地址</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="输入 Substrate 地址 (以 5 开头)"
-                placeholderTextColor="#999"
-                value={recipient}
-                onChangeText={setRecipient}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <Pressable onPress={handleScanQR} style={styles.scanButton}>
-                <Ionicons name="scan-outline" size={20} color={THEME_COLOR} />
-              </Pressable>
-            </View>
+          <Input
+            label="收款地址"
+            placeholder="输入 Substrate 地址 (以 5 开头)"
+            value={recipient}
+            onChangeText={(text) => {
+              setRecipient(text);
+              setRecipientError('');
+            }}
+            error={recipientError}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <View style={styles.addressActions}>
+            <Pressable onPress={handlePasteAddress} style={styles.actionButton}>
+              <Ionicons name="clipboard-outline" size={18} color={THEME_COLOR} />
+              <Text style={styles.actionButtonText}>粘贴</Text>
+            </Pressable>
+            <Pressable onPress={handleScanQR} style={styles.actionButton}>
+              <Ionicons name="scan-outline" size={18} color={THEME_COLOR} />
+              <Text style={styles.actionButtonText}>扫码</Text>
+            </Pressable>
           </View>
 
           {/* 转账金额 */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>转账金额</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="0.00"
-                placeholderTextColor="#999"
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="decimal-pad"
-              />
-              <Pressable onPress={handleMaxAmount} style={styles.maxButton}>
-                <Text style={styles.maxButtonText}>MAX</Text>
-              </Pressable>
-              <Text style={styles.currencyLabel}>DUST</Text>
-            </View>
+          <View style={styles.amountContainer}>
+            <Input
+              label="转账金额"
+              placeholder="0.00"
+              value={amount}
+              onChangeText={(text) => {
+                setAmount(text);
+                setAmountError('');
+              }}
+              error={amountError}
+              keyboardType="decimal-pad"
+              containerStyle={styles.amountInput}
+            />
+            <Pressable onPress={handleMaxAmount} style={styles.maxButton}>
+              <Text style={styles.maxButtonText}>MAX</Text>
+            </Pressable>
           </View>
 
           {/* 备注 */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>备注（可选）</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="添加转账备注"
-                placeholderTextColor="#999"
-                value={memo}
-                onChangeText={setMemo}
-                maxLength={100}
-              />
-            </View>
-          </View>
+          <Input
+            label="备注（可选）"
+            placeholder="添加转账备注"
+            value={memo}
+            onChangeText={setMemo}
+            maxLength={100}
+          />
 
           {/* 手续费提示 */}
           <View style={styles.feeInfo}>
             <Ionicons name="information-circle-outline" size={16} color="#999" />
             <Text style={styles.feeText}>预估手续费: 0.001 DUST</Text>
           </View>
-        </View>
+        </Card>
 
         {/* 转账按钮 */}
-        <Pressable
-          style={[styles.primaryButton, isLoading && styles.disabledButton]}
+        <Button
+          title="确认转账"
           onPress={handleTransfer}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <>
-              <Ionicons name="send" size={20} color="#FFF" />
-              <Text style={styles.primaryButtonText}>确认转账</Text>
-            </>
-          )}
-        </Pressable>
+          loading={isLoading}
+          disabled={!recipient || !amount || isLoading}
+          style={styles.submitButton}
+        />
 
         {/* 安全提示 */}
         <View style={styles.tips}>
@@ -259,16 +299,8 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   balanceCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 20,
     marginBottom: 16,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
   },
   balanceLabel: {
     fontSize: 14,
@@ -280,58 +312,47 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: THEME_COLOR,
   },
-  formCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  inputGroup: {
+  addressActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: -8,
     marginBottom: 16,
   },
-  inputLabel: {
-    fontSize: 14,
-    color: '#8B6914',
-    marginBottom: 8,
-  },
-  inputContainer: {
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FAFAFA',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E8E8E8',
-    paddingHorizontal: 14,
-    height: 48,
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    backgroundColor: THEME_COLOR + '10',
+  },
+  actionButtonText: {
+    fontSize: 13,
+    color: THEME_COLOR,
+    fontWeight: '500',
+  },
+  amountContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: 8,
   },
-  input: {
+  amountInput: {
     flex: 1,
-    fontSize: 15,
-    color: '#333',
-  },
-  scanButton: {
-    padding: 6,
   },
   maxButton: {
-    backgroundColor: THEME_COLOR + '20',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
+    backgroundColor: THEME_COLOR,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 28,
+    height: 48,
+    justifyContent: 'center',
   },
   maxButtonText: {
-    fontSize: 12,
-    color: THEME_COLOR,
-    fontWeight: '600',
-  },
-  currencyLabel: {
     fontSize: 14,
-    color: '#999',
+    color: '#FFF',
+    fontWeight: '600',
   },
   feeInfo: {
     flexDirection: 'row',
@@ -342,23 +363,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#999',
   },
-  primaryButton: {
-    backgroundColor: THEME_COLOR,
-    paddingVertical: 16,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 20,
-  },
-  primaryButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#FFF',
-  },
-  disabledButton: {
-    opacity: 0.6,
+  submitButton: {
+    marginTop: 8,
   },
   tips: {
     gap: 12,

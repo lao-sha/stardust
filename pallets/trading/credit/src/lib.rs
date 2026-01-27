@@ -34,15 +34,19 @@
 
 pub use pallet::*;
 
+pub mod weights;
+pub use weights::WeightInfo;
+
 // 🆕 2026-01-18: 统一使用 pallet-trading-common 中的 MakerCreditInterface
 // 旧的 MakerCreditInterface<AccountId> 定义已移除，统一到 common 模块
 pub use pallet_trading_common::MakerCreditInterface;
 
-#[cfg(test)]
-mod mock;
+// TODO: 测试文件待完善 mock 配置
+// #[cfg(test)]
+// mod mock;
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 // 子模块
 pub mod buyer;

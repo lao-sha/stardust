@@ -10,7 +10,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -18,6 +17,7 @@ import { useMakerStore, selectHasPendingWithdrawal } from '@/stores/maker.store'
 import { MakerService } from '@/services/maker.service';
 import { DepositStatus, WithdrawalProgress } from '@/features/maker/components';
 import { PageHeader } from '@/components/PageHeader';
+import { LoadingSpinner, EmptyState } from '@/components/common';
 
 export default function DepositManagePage() {
   const router = useRouter();
@@ -49,7 +49,7 @@ export default function DepositManagePage() {
   if (isLoading && !makerApp) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#B2955D" />
+        <LoadingSpinner text="加载中..." />
       </View>
     );
   }
@@ -58,9 +58,11 @@ export default function DepositManagePage() {
     return (
       <View style={styles.container}>
         <PageHeader title="押金管理" showBack />
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>未找到做市商信息</Text>
-        </View>
+        <EmptyState
+          icon="alert-circle-outline"
+          title="未找到做市商信息"
+          description="请先申请成为做市商"
+        />
       </View>
     );
   }

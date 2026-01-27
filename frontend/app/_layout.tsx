@@ -6,35 +6,70 @@
 import { Slot } from 'expo-router';
 import { View, StyleSheet, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import React, { useEffect } from 'react';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { disableConsoleInProduction, createLogger, configureLogger } from '@/lib/logger';
+import { configureErrorReporter } from '@/lib/error-handler';
+import { 
+  initErrorReporting, 
+  createRemoteLogger,
+  setTag,
+} from '@/services/error-reporting.service';
+import { initWebSecurity } from '@/lib/security/init';
+
+// 生产环境禁用 console.log/debug/info
+disableConsoleInProduction();
+
+const log = createLogger('RootLayout');
 
 // 主题色
 const THEME_BG = '#F5F5F7';
 const DARK_BG = '#0a0a0f';
 
 export default function RootLayout() {
-  console.log('[RootLayout] Rendering...');
+  log.debug('Rendering...');
   
-  // 添加错误边界
-  const [error, setError] = React.useState<Error | null>(null);
-  
-  if (error) {
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>❌ 错误</Text>
-        <Text style={styles.errorMessage}>{error.message}</Text>
-      </View>
-    );
-  }
+  // 初始化服务
+  useEffect(() => {
+    const initServices = async () => {
+      try {
+        // 1. 初始化 Web 安全功能（P0 修复）
+        await initWebSecurity();
+        
+        // 2. 初始化错误上报（生产环境）
+        await initErrorReporting({
+          // DSN 从环境变量获取，未配置时使用本地日志
+          dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+          environment: __DEV__ ? 'development' : 'production',
+          release: '1.0.0',
+        });
+        
+        // 3. 配置日志服务使用远程上报
+        configureLogger({
+          remoteLogger: createRemoteLogger(),
+        });
+        
+        // 4. 设置应用标签
+        setTag('app', 'stardust-mobile');
+        
+        log.info('Services initialized');
+      } catch (error) {
+        log.warn('Failed to initialize services:', error);
+      }
+    };
+    
+    initServices();
+  }, []);
   
   return (
-    <View style={styles.container}>
-      <StatusBar style="light" />
-      <View style={styles.content}>
-        <Text style={styles.testText}>✅ 布局已加载</Text>
-        <Slot />
+    <ErrorBoundary module="RootLayout">
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.content}>
+          <Slot />
+        </View>
       </View>
-    </View>
+    </ErrorBoundary>
   );
 }
 
@@ -47,29 +82,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: THEME_BG,
   },
-  testText: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    color: '#00ff00',
-    fontSize: 16,
-    zIndex: 999,
-  },
-  errorContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    color: '#ff0000',
-    fontSize: 24,
-    marginBottom: 10,
-  },
-  errorMessage: {
-    color: '#fff',
-    fontSize: 14,
-    textAlign: 'center',
-  },
 });
+
+declare const __DEV__: boolean;

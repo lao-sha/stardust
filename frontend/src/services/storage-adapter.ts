@@ -12,33 +12,43 @@ interface StorageAdapter {
 }
 
 /**
- * Web 平台使用 localStorage 作为 fallback
- * 注意：这不如原生安全存储安全，仅用于开发测试
+ * Web 平台使用 IndexedDB 存储
+ * 比 localStorage 更安全，不易被 XSS 直接读取
  */
 class WebStorageAdapter implements StorageAdapter {
   private prefix = 'stardust_secure_';
+  private storage: import('../lib/secure-storage-indexeddb').SecureStorageInterface;
+
+  constructor() {
+    // 动态导入以避免循环依赖
+    const { secureStorage } = require('../lib/secure-storage-indexeddb');
+    this.storage = secureStorage;
+  }
 
   async getItemAsync(key: string): Promise<string | null> {
     try {
-      return localStorage.getItem(this.prefix + key);
-    } catch {
+      return await this.storage.getItem(this.prefix + key);
+    } catch (error) {
+      console.warn('[WebStorage] Failed to get:', error);
       return null;
     }
   }
 
   async setItemAsync(key: string, value: string): Promise<void> {
     try {
-      localStorage.setItem(this.prefix + key, value);
+      await this.storage.setItem(this.prefix + key, value);
     } catch (error) {
       console.warn('[WebStorage] Failed to save:', error);
+      throw error;
     }
   }
 
   async deleteItemAsync(key: string): Promise<void> {
     try {
-      localStorage.removeItem(this.prefix + key);
+      await this.storage.removeItem(this.prefix + key);
     } catch (error) {
       console.warn('[WebStorage] Failed to delete:', error);
+      throw error;
     }
   }
 }

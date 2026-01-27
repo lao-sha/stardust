@@ -9,9 +9,7 @@ import {
   StyleSheet,
   ScrollView,
   TextInput,
-  Pressable,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { PageHeader } from '@/components/PageHeader';
@@ -19,6 +17,8 @@ import { BottomNavBar } from '@/components/BottomNavBar';
 import { UnlockWalletDialog } from '@/components/UnlockWalletDialog';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
 import { SpecialtySelector, DivinationTypeSelector } from '@/features/diviner';
+import { Card, Button, Input } from '@/components/common';
+import { useAsync } from '@/hooks';
 import { divinationMarketService } from '@/services/divination-market.service';
 import { isSignerUnlocked, unlockWalletForSigning } from '@/lib/signer';
 
@@ -28,7 +28,7 @@ const DUST_DECIMALS = 12;
 
 export default function DivinerRegisterPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const { execute, isLoading } = useAsync();
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
   const [showTxStatus, setShowTxStatus] = useState(false);
   const [txStatus, setTxStatus] = useState('准备中...');
@@ -72,11 +72,10 @@ export default function DivinerRegisterPage() {
   };
 
   const executeRegister = async () => {
-    setLoading(true);
     setShowTxStatus(true);
     setTxStatus('正在提交注册申请...');
 
-    try {
+    await execute(async () => {
       // 将保证金转换为最小单位
       const depositBigInt = BigInt(MIN_DEPOSIT * Math.pow(10, DUST_DECIMALS));
 
@@ -103,16 +102,15 @@ export default function DivinerRegisterPage() {
           [{ text: '确定', onPress: () => router.push('/diviner/dashboard' as any) }]
         );
       }, 1500);
-    } catch (error: any) {
-      console.error('注册失败:', error);
-      setTxStatus('注册失败');
-      setTimeout(() => {
-        setShowTxStatus(false);
-        Alert.alert('注册失败', error.message || '请稍后重试');
-      }, 1500);
-    } finally {
-      setLoading(false);
-    }
+    }, {
+      onError: (error) => {
+        setTxStatus('注册失败');
+        setTimeout(() => {
+          setShowTxStatus(false);
+          Alert.alert('注册失败', error.message || '请稍后重试');
+        }, 1500);
+      }
+    });
   };
 
   return (
@@ -135,7 +133,7 @@ export default function DivinerRegisterPage() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>基本信息</Text>
           
-          <View style={styles.formCard}>
+          <Card>
             <View style={styles.formItem}>
               <Text style={styles.label}>
                 显示名称 <Text style={styles.required}>*</Text>
@@ -168,7 +166,7 @@ export default function DivinerRegisterPage() {
               />
               <Text style={styles.charCount}>{bio.length}/256</Text>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 擅长领域 */}
@@ -176,9 +174,9 @@ export default function DivinerRegisterPage() {
           <Text style={styles.sectionTitle}>
             擅长领域 <Text style={styles.required}>*</Text>
           </Text>
-          <View style={styles.formCard}>
+          <Card>
             <SpecialtySelector value={specialties} onChange={setSpecialties} />
-          </View>
+          </Card>
         </View>
 
         {/* 占卜类型 */}
@@ -186,9 +184,9 @@ export default function DivinerRegisterPage() {
           <Text style={styles.sectionTitle}>
             支持的占卜类型 <Text style={styles.required}>*</Text>
           </Text>
-          <View style={styles.formCard}>
+          <Card>
             <DivinationTypeSelector value={supportedTypes} onChange={setSupportedTypes} />
-          </View>
+          </Card>
         </View>
 
         {/* 协议 */}
@@ -201,17 +199,12 @@ export default function DivinerRegisterPage() {
 
         {/* 提交按钮 */}
         <View style={styles.actionSection}>
-          <Pressable
-            style={[styles.submitBtn, !formValid && styles.submitBtnDisabled]}
+          <Button
+            title="提交注册"
             onPress={handleSubmit}
-            disabled={!formValid || loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.submitBtnText}>提交注册</Text>
-            )}
-          </Pressable>
+            loading={isLoading}
+            disabled={!formValid || isLoading}
+          />
         </View>
       </ScrollView>
 
@@ -285,11 +278,6 @@ const styles = StyleSheet.create({
   required: {
     color: '#FF3B30',
   },
-  formCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-  },
   formItem: {
     marginBottom: 16,
   },
@@ -343,20 +331,5 @@ const styles = StyleSheet.create({
   },
   actionSection: {
     paddingHorizontal: 16,
-  },
-  submitBtn: {
-    height: 52,
-    backgroundColor: THEME_COLOR,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  submitBtnDisabled: {
-    opacity: 0.5,
-  },
-  submitBtnText: {
-    fontSize: 18,
-    color: '#FFF',
-    fontWeight: '600',
   },
 });

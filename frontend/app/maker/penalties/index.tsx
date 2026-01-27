@@ -10,7 +10,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -18,6 +17,7 @@ import { useMakerStore } from '@/stores/maker.store';
 import { MakerService, PenaltyRecord } from '@/services/maker.service';
 import { PenaltyCard } from '@/features/maker/components';
 import { PageHeader } from '@/components/PageHeader';
+import { Card, LoadingSpinner, EmptyState } from '@/components/common';
 
 type FilterType = 'all' | 'unappealed' | 'appealed';
 
@@ -63,7 +63,7 @@ export default function PenaltiesPage() {
   if (loadingPenalties && penalties.length === 0) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#B2955D" />
+        <LoadingSpinner text="加载中..." />
       </View>
     );
   }
@@ -80,7 +80,7 @@ export default function PenaltiesPage() {
         }
       >
         {/* 统计卡片 */}
-        <View style={styles.statsCard}>
+        <Card style={styles.section}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{penalties.length}</Text>
             <Text style={styles.statLabel}>总记录</Text>
@@ -99,7 +99,7 @@ export default function PenaltiesPage() {
             </Text>
             <Text style={styles.statLabel}>待申诉</Text>
           </View>
-        </View>
+        </Card>
 
         {/* 筛选器 */}
         <View style={styles.filterContainer}>
@@ -131,10 +131,11 @@ export default function PenaltiesPage() {
 
         {/* 记录列表 */}
         {filteredPenalties.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📜</Text>
-            <Text style={styles.emptyText}>暂无扣除记录</Text>
-          </View>
+          <EmptyState
+            icon="document-text-outline"
+            title="暂无扣除记录"
+            description="您的扣除记录将显示在这里"
+          />
         ) : (
           <View style={styles.list}>
             {filteredPenalties.map((penalty) => (
@@ -167,10 +168,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  statsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+  section: {
     flexDirection: 'row',
     marginBottom: 16,
   },
@@ -220,18 +218,6 @@ const styles = StyleSheet.create({
   filterTextActive: {
     color: '#FFFFFF',
     fontWeight: '500',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    paddingVertical: 48,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#8E8E93',
   },
   list: {
     gap: 0,

@@ -120,12 +120,37 @@ parameter_types! {
     pub const TreasuryAccount: u64 = 999;
 }
 
+/// Mock ContentRegistry 实现
+pub struct MockContentRegistry;
+
+impl pallet_storage_service::ContentRegistry for MockContentRegistry {
+    fn register_content(
+        _domain: sp_std::vec::Vec<u8>,
+        _subject_id: u64,
+        _cid: sp_std::vec::Vec<u8>,
+        _tier: pallet_storage_service::PinTier,
+    ) -> sp_runtime::DispatchResult {
+        Ok(())
+    }
+    
+    fn is_domain_registered(_domain: &[u8]) -> bool {
+        true
+    }
+    
+    fn get_domain_subject_type(_domain: &[u8]) -> Option<pallet_storage_service::SubjectType> {
+        Some(pallet_storage_service::SubjectType::Evidence)
+    }
+}
+
 impl pallet_divination_ai::Config for Test {
     type AiCurrency = Balances;
     type DivinationProvider = MockDivinationProvider;
+    type ContentRegistry = MockContentRegistry;
     type BaseInterpretationFee = ConstU64<1_000_000_000_000>; // 1 UNIT
     type MinOracleStake = ConstU64<10_000_000_000_000>; // 10 UNIT
     type DisputeDeposit = ConstU64<500_000_000_000>; // 0.5 UNIT
+    type DisputeDepositUsd = ConstU64<1_000_000>; // 1 USDT
+    type DepositCalculator = (); // 使用空实现，返回兜底值
     type RequestTimeout = ConstU64<100>;
     type ProcessingTimeout = ConstU64<50>;
     type DisputePeriod = ConstU64<200>;

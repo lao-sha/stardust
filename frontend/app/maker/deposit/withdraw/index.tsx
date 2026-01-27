@@ -9,9 +9,8 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
-  ActivityIndicator,
+  TouchableOpacity,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -19,6 +18,8 @@ import { useMakerStore, selectHasPendingWithdrawal } from '@/stores/maker.store'
 import { MakerService } from '@/services/maker.service';
 import { PageHeader } from '@/components/PageHeader';
 import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
+import { Card, Button, LoadingSpinner } from '@/components/common';
+import { useAsync } from '@/hooks';
 
 const DEPOSIT_TARGET_USD = 1000;
 
@@ -29,7 +30,6 @@ export default function WithdrawPage() {
     depositUsdValue,
     dustPrice,
     requestWithdrawal,
-    isSubmitting,
     txStatus,
     error,
     clearError,
@@ -38,6 +38,7 @@ export default function WithdrawPage() {
   } = useMakerStore();
 
   const hasPendingWithdrawal = useMakerStore(selectHasPendingWithdrawal);
+  const { execute, isLoading } = useAsync();
 
   const [showTxDialog, setShowTxDialog] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -57,7 +58,7 @@ export default function WithdrawPage() {
   if (!makerApp) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#B2955D" />
+        <LoadingSpinner text="加载中..." />
       </View>
     );
   }
@@ -105,16 +106,14 @@ export default function WithdrawPage() {
   };
 
   const submitWithdrawal = async () => {
-    try {
-      setShowTxDialog(true);
+    setShowTxDialog(true);
+    await execute(async () => {
       await requestWithdrawal(withdrawDustBigInt);
       setTimeout(() => {
         setShowTxDialog(false);
         router.replace('/maker/deposit/withdraw/status');
       }, 1500);
-    } catch (err) {
-      // 错误已在 store 中处理
-    }
+    });
   };
 
   const handleCloseTxDialog = () => {
@@ -128,7 +127,7 @@ export default function WithdrawPage() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* 可提现押金 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <Text style={styles.cardTitle}>可提现押金</Text>
           <Text style={styles.availableAmount}>
             {MakerService.formatDustAmount(makerApp.deposit)} DUST
@@ -136,10 +135,10 @@ export default function WithdrawPage() {
           <Text style={styles.availableUsd}>
             ≈ ${MakerService.formatUsdAmount(depositUsdValue)} USD
           </Text>
-        </View>
+        </Card>
 
         {/* 提现金额 */}
-        <View style={styles.card}>
+        <Card style={styles.section}>
           <Text style={styles.cardTitle}>提现金额</Text>
           <View style={styles.inputContainer}>
             <TextInput
@@ -156,7 +155,7 @@ export default function WithdrawPage() {
               ≈ ${MakerService.formatUsdAmount(withdrawUsd)} USD
             </Text>
           )}
-        </View>
+        </Card>
 
         {/* 快捷金额 */}
         <View style={styles.quickAmounts}>
@@ -175,7 +174,7 @@ export default function WithdrawPage() {
         </View>
 
         {/* 提现说明 */}
-        <View style={styles.infoCard}>
+        <Card style={[styles.section, styles.infoCard]}>
           <Text style={styles.infoIcon}>⚠️</Text>
           <Text style={styles.infoTitle}>提现说明</Text>
           <View style={styles.infoList}>
@@ -184,11 +183,11 @@ export default function WithdrawPage() {
             <Text style={styles.infoItem}>• 提现后押金可能低于阈值</Text>
             <Text style={styles.infoItem}>• 押金不足将暂停服务</Text>
           </View>
-        </View>
+        </Card>
 
         {/* 提现后状态 */}
         {withdrawDust > 0 && (
-          <View style={styles.resultCard}>
+          <Card style={styles.section}>
             <Text style={styles.resultTitle}>提现后押金</Text>
             <Text style={styles.resultAmount}>
               {remainingDust.toFixed(4)} DUST (${MakerService.formatUsdAmount(remainingUsd)})
@@ -198,21 +197,16 @@ export default function WithdrawPage() {
                 {isBelowTarget ? '⚠️ 低于目标值' : '✅ 正常'}
               </Text>
             </View>
-          </View>
+          </Card>
         )}
 
         {/* 提交按钮 */}
-        <TouchableOpacity
-          style={[styles.submitButton, (!isValidAmount || isSubmitting) && styles.submitButtonDisabled]}
+        <Button
+          title="提交申请"
           onPress={handleSubmit}
-          disabled={!isValidAmount || isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitButtonText}>提交申请</Text>
-          )}
-        </TouchableOpacity>
+          loading={isLoading}
+          disabled={!isValidAmount || isLoading}
+        />
       </ScrollView>
 
       {/* 交易状态弹窗 */}
@@ -241,10 +235,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+  section: {
     marginBottom: 16,
   },
   cardTitle: {
@@ -306,9 +297,6 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     backgroundColor: '#FFF9E6',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
   },
   infoIcon: {
     fontSize: 20,
@@ -327,12 +315,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666666',
     lineHeight: 20,
-  },
-  resultCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
   },
   resultTitle: {
     fontSize: 14,
@@ -366,20 +348,5 @@ const styles = StyleSheet.create({
   },
   statusTextWarning: {
     color: '#FF9500',
-  },
-  submitButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#C9C9C9',
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

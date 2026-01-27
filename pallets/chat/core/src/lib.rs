@@ -39,12 +39,18 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+pub mod weights;
+pub use weights::{WeightInfo, SubstrateWeight};
+
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{pallet_prelude::*, BoundedVec, traits::{Randomness, UnixTime}};
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_runtime::traits::{Hash, Saturating};
 use sp_std::convert::TryInto;
+
+// 使用 chat-common 的共享类型
+pub use pallet_chat_common::MessageType;
 
 /// 聊天用户ID类型定义 - 11位数字
 pub type ChatUserId = u64;
@@ -113,153 +119,7 @@ pub struct ChatUserProfile<T: Config> {
     pub last_active: u64,
 }
 
-/// 函数级详细中文注释：权重信息 trait
-/// - 定义所有可调用函数的权重计算
-/// - 实际项目中应通过 benchmark 生成精确权重
-/// - 这里提供保守的默认估算
-pub trait WeightInfo {
-	fn send_message() -> Weight;
-	fn mark_as_read() -> Weight;
-	fn delete_message() -> Weight;
-	fn mark_batch_as_read(n: u32) -> Weight;
-	fn mark_session_as_read(n: u32) -> Weight;
-	fn archive_session() -> Weight;
-	fn block_user() -> Weight;
-	fn unblock_user() -> Weight;
-	fn cleanup_old_messages(n: u32) -> Weight;
-	// 新增ChatUserId相关功能权重
-	fn register_chat_user() -> Weight;
-	fn update_chat_profile() -> Weight;
-	fn set_user_status() -> Weight;
-	fn update_privacy_settings() -> Weight;
-}
-
-/// 函数级详细中文注释：默认权重实现
-/// - 基于 Substrate 标准权重单位估算
-/// - DbRead = 25_000_000 weight (25微秒)
-/// - DbWrite = 100_000_000 weight (100微秒)
-pub struct SubstrateWeight<T>(core::marker::PhantomData<T>);
-impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
-	/// 发送消息权重：5次读 + 4次写
-	/// - 读：Blacklist, RateLimit, Sessions, NextMessageId, SessionMessages
-	/// - 写：Messages, Sessions, SessionMessages, UnreadCount
-	fn send_message() -> Weight {
-		Weight::from_parts(
-			5 * 25_000_000 + 4 * 100_000_000, // 计算权重
-			0 // 存储权重（暂不考虑）
-		)
-	}
-
-	/// 标记已读权重：2次读 + 2次写
-	/// - 读：Messages, UnreadCount
-	/// - 写：Messages, UnreadCount
-	fn mark_as_read() -> Weight {
-		Weight::from_parts(
-			2 * 25_000_000 + 2 * 100_000_000,
-			0
-		)
-	}
-
-	/// 删除消息权重：1次读 + 1次写
-	fn delete_message() -> Weight {
-		Weight::from_parts(
-			1 * 25_000_000 + 1 * 100_000_000,
-			0
-		)
-	}
-
-	/// 批量标记已读权重：取决于消息数量
-	/// 每条消息：1次读 + 1次写
-	fn mark_batch_as_read(n: u32) -> Weight {
-		Weight::from_parts(
-			(n as u64) * (25_000_000 + 100_000_000),
-			0
-		)
-	}
-
-	/// 会话标记已读权重：取决于消息数量
-	/// 基础：2次读(Sessions + SessionMessages迭代)
-	/// 每条消息：1次读 + 1次写
-	fn mark_session_as_read(n: u32) -> Weight {
-		Weight::from_parts(
-			2 * 25_000_000 + (n as u64) * (25_000_000 + 100_000_000),
-			0
-		)
-	}
-
-	/// 归档会话权重：1次读 + 1次写
-	fn archive_session() -> Weight {
-		Weight::from_parts(
-			1 * 25_000_000 + 1 * 100_000_000,
-			0
-		)
-	}
-
-	/// 拉黑用户权重：1次写
-	fn block_user() -> Weight {
-		Weight::from_parts(
-			1 * 100_000_000,
-			0
-		)
-	}
-
-	/// 解除拉黑权重：1次写（删除）
-	fn unblock_user() -> Weight {
-		Weight::from_parts(
-			1 * 100_000_000,
-			0
-		)
-	}
-
-	/// 清理旧消息权重：取决于消息数量
-	/// 每条消息：1次读 + 2次写（Messages + SessionMessages）
-	fn cleanup_old_messages(n: u32) -> Weight {
-		Weight::from_parts(
-			(n as u64) * (25_000_000 + 2 * 100_000_000),
-			0
-		)
-	}
-
-	/// 注册聊天用户权重：多次读写操作
-	/// - 读：AccountToChatUserId检查 + UsedChatUserIds迭代检查
-	/// - 写：UsedChatUserIds + AccountToChatUserId + ChatUserIdToAccount + ChatUserProfiles
-	fn register_chat_user() -> Weight {
-		Weight::from_parts(
-			2 * 25_000_000 + 4 * 100_000_000,
-			0
-		)
-	}
-
-	/// 更新聊天资料权重：2次读 + 1次写
-	/// - 读：AccountToChatUserId + ChatUserProfiles
-	/// - 写：ChatUserProfiles
-	fn update_chat_profile() -> Weight {
-		Weight::from_parts(
-			2 * 25_000_000 + 1 * 100_000_000,
-			0
-		)
-	}
-
-	/// 设置用户状态权重：2次读 + 1次写
-	/// - 读：AccountToChatUserId + ChatUserProfiles
-	/// - 写：ChatUserProfiles
-	fn set_user_status() -> Weight {
-		Weight::from_parts(
-			2 * 25_000_000 + 1 * 100_000_000,
-			0
-		)
-	}
-
-	/// 更新隐私设置权重：2次读 + 1次写
-	/// - 读：AccountToChatUserId + ChatUserProfiles
-	/// - 写：ChatUserProfiles
-	fn update_privacy_settings() -> Weight {
-		Weight::from_parts(
-			2 * 25_000_000 + 1 * 100_000_000,
-			0
-		)
-	}
-}
+// WeightInfo trait 和实现已移至 weights.rs
 
 /// 函数级详细中文注释：消息元数据结构
 /// - 链上只存储元数据，不存储实际内容
@@ -318,26 +178,7 @@ pub mod pallet {
 	use sp_std::vec::Vec;
 	use sp_std::vec;
 
-	/// 函数级详细中文注释：消息类型枚举
-	#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, TypeInfo, MaxEncodedLen, RuntimeDebug)]
-	pub enum MessageType {
-		/// 文本消息
-		Text,
-		/// 图片消息
-		Image,
-		/// 文件消息
-		File,
-		/// 语音消息
-		Voice,
-		/// 系统消息（如订单状态变更）
-		System,
-	}
-
-	impl Default for MessageType {
-		fn default() -> Self {
-			Self::Text
-		}
-	}
+	// MessageType 已移至 pallet-chat-common，通过 pub use 重新导出
 
 	#[pallet::pallet]
 	pub struct Pallet<T>(_);
@@ -779,15 +620,8 @@ pub mod pallet {
 			let msg_id = NextMessageId::<T>::get();
 			NextMessageId::<T>::put(msg_id.saturating_add(1));
 
-			// 转换消息类型代码为枚举
-			let msg_type = match msg_type_code {
-				0 => MessageType::Text,
-				1 => MessageType::Image,
-				2 => MessageType::File,
-				3 => MessageType::Voice,
-				4 => MessageType::System,
-				_ => MessageType::Text, // 默认为文本
-			};
+			// 转换消息类型代码为枚举（使用 chat-common 的 from_u8 方法）
+			let msg_type = MessageType::from_u8(msg_type_code);
 
 			// 创建消息（增强版，包含ChatUserId）
 			let now = <frame_system::Pallet<T>>::block_number();

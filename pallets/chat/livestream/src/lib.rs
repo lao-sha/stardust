@@ -40,8 +40,7 @@ use frame_support::{
     PalletId,
 };
 use frame_system::pallet_prelude::*;
-use sp_runtime::traits::{AccountIdConversion, Saturating, Zero, SaturatedConversion};
-use pallet_trading_common::PricingProvider;
+use sp_runtime::traits::{AccountIdConversion, Saturating, Zero};
 
 pub use pallet::*;
 pub use types::*;
@@ -103,12 +102,12 @@ pub mod pallet {
         #[pallet::constant]
         type RoomBond: Get<BalanceOf<Self>>;
 
-        /// 创建直播间保证金USD价值（精度10^6，100_000_000 = 100 USDT）
+        /// 创建直播间保证金USD价值（精度10^6，5_000_000 = 5 USDT）
         #[pallet::constant]
         type RoomBondUsd: Get<u64>;
 
-        /// 定价接口（用于换算保证金）
-        type Pricing: PricingProvider<BalanceOf<Self>>;
+        /// 保证金计算器（统一的 USD 价值动态计算）
+        type DepositCalculator: pallet_trading_common::DepositCalculator<BalanceOf<Self>>;
 
         /// Pallet ID (用于生成模块账户)
         #[pallet::constant]
@@ -493,28 +492,13 @@ pub mod pallet {
             // 付费直播必须设置票价
             if room_type == LiveRoomType::Paid {
                 ensure!(
-                    ticket_price.is_some() && !ticket_price.unwrap().is_zero(),
+                    ticket_price.map(|p| !p.is_zero()).unwrap_or(false),
                     Error::<T>::InvalidTicketPrice
                 );
             }
 
-            // 锁定保证金：使用pricing换算100 USDT价值的DUST
-            let min_bond = T::RoomBond::get();
-            let bond_usd = T::RoomBondUsd::get(); // 100_000_000 (100 USDT)
-            
-            let bond = if let Some(price) = T::Pricing::get_dust_to_usd_rate() {
-                let price_u128: u128 = price.saturated_into();
-                if price_u128 > 0u128 {
-                    let required_u128 = (bond_usd as u128).saturating_mul(1_000_000u128) / price_u128;
-                    let required: BalanceOf<T> = required_u128.saturated_into();
-                    if required > min_bond { required } else { min_bond }
-                } else {
-                    min_bond
-                }
-            } else {
-                min_bond
-            };
-            
+            // 锁定保证金：使用统一的 DepositCalculator 计算
+            let bond = Self::calculate_room_bond();
             T::Currency::reserve(&host, bond)?;
 
             // 生成直播间 ID
@@ -983,6 +967,88 @@ pub mod pallet {
             })
         }
 
+        /// 处理直播间违规（治理权限）
+        /// 
+        /// 根据违规类型按比例扣除保证金，不封禁直播间
+        #[pallet::call_index(41)]
+        #[pallet::weight(T::WeightInfo::ban_room())]
+        pub fn handle_room_violation(
+            origin: OriginFor<T>,
+            room_id: u64,
+            violation_type: LiveRoomViolationType,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+
+            let room = LiveRooms::<T>::get(room_id).ok_or(Error::<T>::RoomNotFound)?;
+            ensure!(room.status != LiveRoomStatus::Banned, Error::<T>::RoomBanned);
+
+            // 获取保证金
+            let (host, bond_amount) = RoomDeposits::<T>::get(room_id)
+                .ok_or(Error::<T>::InsufficientBalance)?;
+
+            // 计算扣除金额
+            let slash_bps = violation_type.slash_bps();
+            let slash_amount = bond_amount.saturating_mul(slash_bps.into()) / 10000u32.into();
+
+            if !slash_amount.is_zero() {
+                // 解锁保证金
+                let actually_slashed = T::Currency::unreserve(&host, slash_amount);
+                
+                // 转入平台国库
+                if !actually_slashed.is_zero() {
+                    let _ = T::Currency::transfer(
+                        &host,
+                        &Self::account_id(),
+                        actually_slashed,
+                        ExistenceRequirement::AllowDeath,
+                    );
+                }
+
+                // 更新保证金记录
+                let remaining = bond_amount.saturating_sub(actually_slashed);
+                if remaining.is_zero() {
+                    RoomDeposits::<T>::remove(room_id);
+                } else {
+                    RoomDeposits::<T>::insert(room_id, (host.clone(), remaining));
+                }
+
+                Self::deposit_event(Event::RoomBondSlashed {
+                    room_id,
+                    host,
+                    amount: actually_slashed,
+                });
+            }
+
+            Ok(())
+        }
+
+        /// 补充直播间保证金
+        #[pallet::call_index(42)]
+        #[pallet::weight(T::WeightInfo::create_room())]
+        pub fn top_up_room_bond(
+            origin: OriginFor<T>,
+            room_id: u64,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let room = LiveRooms::<T>::get(room_id).ok_or(Error::<T>::RoomNotFound)?;
+            ensure!(room.host == who, Error::<T>::NotRoomHost);
+            ensure!(room.status != LiveRoomStatus::Banned, Error::<T>::RoomBanned);
+
+            // 锁定保证金
+            T::Currency::reserve(&who, amount)
+                .map_err(|_| Error::<T>::InsufficientBalance)?;
+
+            // 更新保证金记录
+            let (host, current) = RoomDeposits::<T>::get(room_id)
+                .unwrap_or((who.clone(), Zero::zero()));
+            let new_total = current.saturating_add(amount);
+            RoomDeposits::<T>::insert(room_id, (host, new_total));
+
+            Ok(())
+        }
+
         // -------- 连麦功能 --------
 
         /// 开始连麦 (主播调用)
@@ -1138,22 +1204,8 @@ pub mod pallet {
             let (host, current_bond) = RoomDeposits::<T>::get(room_id)
                 .ok_or(Error::<T>::RoomNotFound)?;
             
-            // 计算当前所需保证金（基于 USD 价值）
-            let min_bond = T::RoomBond::get();
-            let bond_usd = T::RoomBondUsd::get();
-            
-            let required_bond = if let Some(price) = T::Pricing::get_dust_to_usd_rate() {
-                let price_u128: u128 = price.saturated_into();
-                if price_u128 > 0u128 {
-                    let required_u128 = (bond_usd as u128).saturating_mul(1_000_000u128) / price_u128;
-                    let required: BalanceOf<T> = required_u128.saturated_into();
-                    if required > min_bond { required } else { min_bond }
-                } else {
-                    min_bond
-                }
-            } else {
-                min_bond
-            };
+            // 计算当前所需保证金（使用统一的 DepositCalculator）
+            let required_bond = Self::calculate_room_bond();
             
             // 计算可提取的超额部分
             ensure!(current_bond > required_bond, Error::<T>::NoBondExcess);
@@ -1339,6 +1391,17 @@ pub mod pallet {
             });
             
             Ok(actually_slashed)
+        }
+
+        /// 计算直播间保证金金额（5 USDT 等值的 DUST）
+        /// 
+        /// 使用统一的 DepositCalculator trait 计算
+        pub fn calculate_room_bond() -> BalanceOf<T> {
+            use pallet_trading_common::DepositCalculator;
+            T::DepositCalculator::calculate_deposit(
+                T::RoomBondUsd::get(),
+                T::RoomBond::get(),
+            )
         }
     }
 }

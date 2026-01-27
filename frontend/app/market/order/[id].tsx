@@ -28,6 +28,8 @@ import {
   EmptyState,
   ActionButton,
 } from '@/divination/market/components';
+import { Card, Button, Input } from '@/components/common';
+import { useAsync } from '@/hooks';
 import { THEME, SHADOWS } from '@/divination/market/theme';
 import { Order, Provider, FollowUp } from '@/divination/market/types';
 import { truncateAddress, formatDateTime } from '@/divination/market/utils/market.utils';
@@ -37,7 +39,7 @@ export default function OrderDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { address } = useWalletStore();
-  const { getOrder, loading } = useOrders();
+  const { getOrder } = useOrders();
   const { getProvider } = useMarketApi();
   const {
     acceptOrder,
@@ -49,6 +51,7 @@ export default function OrderDetailScreen() {
     replyFollowUp,
     isProcessing,
   } = useChainTransaction();
+  const { execute, isLoading } = useAsync();
 
   const [order, setOrder] = useState<Order | null>(null);
   const [provider, setProvider] = useState<Provider | null>(null);
@@ -60,7 +63,7 @@ export default function OrderDetailScreen() {
   const loadData = useCallback(async () => {
     if (!id) return;
 
-    try {
+    await execute(async () => {
       const orderData = await getOrder(parseInt(id, 10));
       setOrder(orderData);
 
@@ -68,10 +71,8 @@ export default function OrderDetailScreen() {
         const providerData = await getProvider(orderData.provider);
         setProvider(providerData);
       }
-    } catch (err) {
-      console.error('Load order error:', err);
-    }
-  }, [id, getOrder, getProvider]);
+    });
+  }, [id, getOrder, getProvider, execute]);
 
   useEffect(() => {
     loadData();
@@ -258,7 +259,7 @@ export default function OrderDetailScreen() {
     router.push(`/market/review/create?orderId=${id}`);
   };
 
-  if (loading && !order) {
+  if (isLoading && !order) {
     return (
       <SafeAreaView style={styles.container}>
         <LoadingSpinner text="加载中..." fullScreen />
@@ -311,7 +312,7 @@ export default function OrderDetailScreen() {
         }
       >
         {/* 订单状态卡片 */}
-        <View style={[styles.statusCard, SHADOWS.medium]}>
+        <Card style={styles.statusCard}>
           <View style={styles.statusHeader}>
             <OrderStatusBadge status={order.status} size="medium" />
             {order.isUrgent && (
@@ -322,10 +323,10 @@ export default function OrderDetailScreen() {
             )}
           </View>
           <Text style={styles.orderId}>订单号: {order.id}</Text>
-        </View>
+        </Card>
 
         {/* 解卦师/客户信息 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>
             {isCustomer ? '解卦师' : '客户'}
           </Text>
@@ -358,10 +359,10 @@ export default function OrderDetailScreen() {
               </>
             )}
           </View>
-        </View>
+        </Card>
 
         {/* 套餐信息 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>服务信息</Text>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>占卜类型</Text>
@@ -375,21 +376,21 @@ export default function OrderDetailScreen() {
             <Text style={styles.infoLabel}>创建时间</Text>
             <Text style={styles.infoValue}>{formatDateTime(order.createdAt)}</Text>
           </View>
-        </View>
+        </Card>
 
         {/* 问题描述 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>问题描述</Text>
           <View style={styles.questionBox}>
             <Text style={styles.questionText}>
               {order.question || '问题内容加密存储在链上'}
             </Text>
           </View>
-        </View>
+        </Card>
 
         {/* 提供者输入解答 (仅限进行中且我是提供者) */}
         {isProvider && order.status === 'Accepted' && (
-          <View style={[styles.section, SHADOWS.small]}>
+          <Card style={styles.section}>
             <Text style={styles.sectionTitle}>提交解答</Text>
             <TextInput
               style={styles.answerInput}
@@ -408,24 +409,24 @@ export default function OrderDetailScreen() {
             >
               <Text style={styles.submitBtnText}>提交解答并完成订单</Text>
             </TouchableOpacity>
-          </View>
+          </Card>
         )}
 
         {/* 解读结果 */}
         {order.answerCid && (
-          <View style={[styles.section, SHADOWS.small]}>
+          <Card style={styles.section}>
             <Text style={styles.sectionTitle}>解读结果</Text>
             <View style={styles.answerBox}>
               <Text style={styles.answerText}>
                 {order.answer || '解读结果已上链存储'}
               </Text>
             </View>
-          </View>
+          </Card>
         )}
 
         {/* 追问列表 */}
         {order.followUps && order.followUps.length > 0 && (
-          <View style={[styles.section, SHADOWS.small]}>
+          <Card style={styles.section}>
             <Text style={styles.sectionTitle}>
               追问记录 ({order.followUps.length})
             </Text>
@@ -476,12 +477,12 @@ export default function OrderDetailScreen() {
                 )}
               </View>
             ))}
-          </View>
+          </Card>
         )}
 
         {/* 追问输入 */}
         {isCustomer && canFollowUp && (
-          <View style={[styles.section, SHADOWS.small]}>
+          <Card style={styles.section}>
             <Text style={styles.sectionTitle}>追问</Text>
             <TextInput
               style={styles.followUpInput}
@@ -502,14 +503,14 @@ export default function OrderDetailScreen() {
                 {submittingFollowUp ? '提交中...' : '提交追问'}
               </Text>
             </TouchableOpacity>
-          </View>
+          </Card>
         )}
 
         {/* 订单时间线 */}
-        <View style={[styles.section, SHADOWS.small]}>
+        <Card style={styles.section}>
           <Text style={styles.sectionTitle}>订单进度</Text>
           <OrderTimeline order={order} />
-        </View>
+        </Card>
 
         <View style={styles.bottomSpace} />
       </ScrollView>
@@ -591,9 +592,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   statusCard: {
-    backgroundColor: THEME.card,
-    borderRadius: 12,
-    padding: 16,
     marginBottom: 16,
   },
   statusHeader: {
@@ -621,9 +619,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   section: {
-    backgroundColor: THEME.card,
-    borderRadius: 12,
-    padding: 16,
     marginBottom: 16,
   },
   sectionTitle: {
@@ -836,215 +831,5 @@ const styles = StyleSheet.create({
     color: THEME.textSecondary,
     fontSize: 16,
     fontWeight: '600',
-  },
-});
-
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: THEME.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: THEME.card,
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: THEME.border,
-  },
-  backBtn: {
-    padding: 8,
-    width: 40,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: THEME.text,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  statusCard: {
-    backgroundColor: THEME.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  statusHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  urgentTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: THEME.warning + '15',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    gap: 2,
-  },
-  urgentText: {
-    fontSize: 11,
-    color: THEME.warning,
-    fontWeight: '500',
-  },
-  orderId: {
-    fontSize: 12,
-    color: THEME.textTertiary,
-    marginTop: 8,
-  },
-  section: {
-    backgroundColor: THEME.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: THEME.text,
-    marginBottom: 12,
-  },
-  personRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  personInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  personName: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: THEME.text,
-  },
-  personOrders: {
-    fontSize: 12,
-    color: THEME.textSecondary,
-    marginTop: 4,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: THEME.borderLight,
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: THEME.textSecondary,
-  },
-  infoValue: {
-    fontSize: 14,
-    color: THEME.text,
-  },
-  questionBox: {
-    backgroundColor: THEME.background,
-    borderRadius: 8,
-    padding: 12,
-  },
-  questionText: {
-    fontSize: 14,
-    color: THEME.text,
-    lineHeight: 20,
-  },
-  answerBox: {
-    backgroundColor: THEME.primary + '10',
-    borderRadius: 8,
-    padding: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: THEME.primary,
-  },
-  answerText: {
-    fontSize: 14,
-    color: THEME.text,
-    lineHeight: 22,
-  },
-  followUpItem: {
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: THEME.borderLight,
-  },
-  followUpQuestion: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  followUpQuestionText: {
-    flex: 1,
-    fontSize: 13,
-    color: THEME.info,
-    lineHeight: 18,
-  },
-  followUpAnswer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginLeft: 22,
-  },
-  followUpAnswerText: {
-    flex: 1,
-    fontSize: 13,
-    color: THEME.text,
-    lineHeight: 18,
-  },
-  followUpInput: {
-    backgroundColor: THEME.background,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: THEME.text,
-    height: 80,
-    marginBottom: 12,
-  },
-  followUpBtn: {
-    backgroundColor: THEME.primary,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  followUpBtnText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: THEME.textInverse,
-  },
-  bottomSpace: {
-    height: 80,
-  },
-  footer: {
-    backgroundColor: THEME.card,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: THEME.border,
-  },
-  reviewBtn: {
-    flexDirection: 'row',
-    backgroundColor: THEME.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  reviewBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: THEME.textInverse,
   },
 });

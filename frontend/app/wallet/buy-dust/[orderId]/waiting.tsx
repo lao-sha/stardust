@@ -10,7 +10,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTradingStore, OrderState } from '@/stores/trading.store';
@@ -22,6 +21,8 @@ import {
 } from '@/features/trading/components';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { PageHeader } from '@/components/PageHeader';
+import { Card, Button, LoadingSpinner } from '@/components/common';
+import { useAsync } from '@/hooks';
 import type { Maker } from '@/stores/trading.store';
 
 export default function WaitingPage() {
@@ -34,6 +35,7 @@ export default function WaitingPage() {
     dispute,
   } = useTradingStore();
 
+  const { execute, isLoading } = useAsync();
   const [maker, setMaker] = useState<Maker | null>(null);
   const [showContactDialog, setShowContactDialog] = useState(false);
   const [showDisputeDialog, setShowDisputeDialog] = useState(false);
@@ -89,9 +91,7 @@ export default function WaitingPage() {
     return (
       <View style={styles.wrapper}>
         <PageHeader title="等待放币" />
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color="#B2955D" />
-        </View>
+        <LoadingSpinner text="加载订单信息..." />
         <BottomNavBar activeTab="profile" />
       </View>
     );
@@ -114,19 +114,19 @@ export default function WaitingPage() {
 
         {/* 等待状态 */}
         <View style={styles.section}>
-          <View style={styles.statusCard}>
+          <Card style={styles.statusCard}>
             <Text style={styles.statusIcon}>⏳</Text>
             <Text style={styles.statusTitle}>等待做市商确认</Text>
             <Text style={styles.statusDesc}>
               做市商通常在 5-30 分钟内确认并释放 DUST
             </Text>
-          </View>
+          </Card>
         </View>
 
         {/* 订单信息 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>订单信息</Text>
-          <View style={styles.infoCard}>
+          <Card style={styles.infoCard}>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>订单号</Text>
               <Text style={styles.infoValue}>#{currentOrder.id}</Text>
@@ -149,14 +149,14 @@ export default function WaitingPage() {
                 {TradingService.formatDustAmount(currentOrder.qty)} DUST
               </Text>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* 做市商信息 */}
         {maker && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>做市商信息</Text>
-            <View style={styles.makerCard}>
+            <Card style={styles.makerCard}>
               <View style={styles.makerHeader}>
                 <Text style={styles.makerName}>👤 {maker.maskedFullName}</Text>
                 <View style={styles.makerRating}>
@@ -166,18 +166,18 @@ export default function WaitingPage() {
               <Text style={styles.makerStats}>
                 已服务 {maker.usersServed} 位用户
               </Text>
-            </View>
+            </Card>
           </View>
         )}
 
         {/* 操作按钮 */}
         <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.contactButton}
+          <Button
+            title="联系做市商"
             onPress={handleContactMaker}
-          >
-            <Text style={styles.contactButtonText}>联系做市商</Text>
-          </TouchableOpacity>
+            loading={isLoading}
+            style={styles.contactButton}
+          />
 
           <View style={styles.disputeContainer}>
             <Text style={styles.disputeLabel}>遇到问题？</Text>
@@ -189,12 +189,12 @@ export default function WaitingPage() {
 
         {/* 提示信息 */}
         <View style={styles.section}>
-          <View style={styles.tipCard}>
+          <Card style={styles.tipCard}>
             <Text style={styles.tipTitle}>💡 温馨提示</Text>
             <Text style={styles.tipText}>• 请耐心等待做市商确认</Text>
             <Text style={styles.tipText}>• 如超过 2 小时未放币，可申请仲裁</Text>
             <Text style={styles.tipText}>• 仲裁期间订单将被冻结</Text>
-          </View>
+          </Card>
         </View>
       </ScrollView>
 
@@ -231,11 +231,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: 20,
   },
-  loading: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   section: {
     padding: 16,
   },
@@ -246,9 +241,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   statusCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 32,
     alignItems: 'center',
   },
   statusIcon: {
@@ -267,8 +259,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   infoCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
     padding: 16,
   },
   infoRow: {
@@ -291,8 +281,6 @@ const styles = StyleSheet.create({
     color: '#007AFF',
   },
   makerCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
     padding: 16,
   },
   makerHeader: {
@@ -319,16 +307,7 @@ const styles = StyleSheet.create({
     color: '#666666',
   },
   contactButton: {
-    backgroundColor: '#B2955D',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
     marginBottom: 16,
-  },
-  contactButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
   disputeContainer: {
     flexDirection: 'row',
@@ -347,8 +326,6 @@ const styles = StyleSheet.create({
   },
   tipCard: {
     backgroundColor: '#FFF9F0',
-    borderRadius: 12,
-    padding: 16,
   },
   tipTitle: {
     fontSize: 14,

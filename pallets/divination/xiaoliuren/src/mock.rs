@@ -108,12 +108,6 @@ parameter_types! {
     pub const MaxEncryptedLen: u32 = 512;
     pub const AiInterpretationFee: u64 = 100;
     pub TreasuryAccount: u64 = 999;
-    /// 每 KB 存储押金（测试值：100）
-    pub const StorageDepositPerKb: u128 = 100;
-    /// 最小存储押金（测试值：10）
-    pub const MinStorageDeposit: u128 = 10;
-    /// 最大存储押金（测试值：100_000_000）
-    pub const MaxStorageDeposit: u128 = 100_000_000;
 }
 
 /// 模拟随机数生成器
@@ -163,10 +157,6 @@ impl pallet_xiaoliuren::Config for Test {
     type AiInterpretationFee = AiInterpretationFee;
     type TreasuryAccount = TreasuryAccount;
     type AiOracleOrigin = MockAiOracleOrigin;
-    // 存储押金相关配置
-    type StorageDepositPerKb = StorageDepositPerKb;
-    type MinStorageDeposit = MinStorageDeposit;
-    type MaxStorageDeposit = MaxStorageDeposit;
 }
 
 /// 构建测试外部状态

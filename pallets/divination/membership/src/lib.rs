@@ -63,6 +63,9 @@ pub mod pallet {
         traits::{AccountIdConversion, Saturating, Zero, CheckedDiv},
     };
     use sp_std::vec::Vec;
+    use pallet_trading_common::PricingProvider;
+    use pallet_affiliate::UserFundingProvider;
+    use pallet_affiliate::types::AffiliateDistributor;
 
     pub type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -92,6 +95,19 @@ pub mod pallet {
         /// Treasury account for receiving membership fees.
         #[pallet::constant]
         type TreasuryAccount: Get<Self::AccountId>;
+
+        /// 销毁账户
+        type BurnAccount: Get<Self::AccountId>;
+
+        /// 用户存储资金账户提供者
+        type UserFundingProvider: pallet_affiliate::UserFundingProvider<Self::AccountId>;
+
+        /// 联盟计酬分配器（15层推荐链分配）
+        type AffiliateDistributor: pallet_affiliate::types::AffiliateDistributor<
+            Self::AccountId,
+            u128,
+            BlockNumberFor<Self>,
+        >;
 
         /// Percentage of membership fees allocated to reward pool (in basis points, e.g., 1000 = 10%).
         #[pallet::constant]
@@ -124,6 +140,9 @@ pub mod pallet {
         /// Maximum reward history entries per user (ring buffer size).
         #[pallet::constant]
         type MaxRewardHistorySize: Get<u32>;
+
+        /// 定价接口（用于 USDT 到 DUST 换算）
+        type Pricing: pallet_trading_common::PricingProvider<BalanceOf<Self>>;
     }
 
     // ============ Storage Items ============
@@ -401,25 +420,8 @@ pub mod pallet {
             };
             let expires_at = now.saturating_add(duration_blocks);
 
-            // Transfer fee: 90% to treasury, 10% to reward pool
-            let reward_pool_share = fee
-                .saturating_mul(T::RewardPoolAllocation::get().into())
-                / 10000u32.into();
-            let treasury_share = fee.saturating_sub(reward_pool_share);
-
-            T::Currency::transfer(
-                &who,
-                &T::TreasuryAccount::get(),
-                treasury_share,
-                ExistenceRequirement::KeepAlive,
-            )?;
-
-            T::Currency::transfer(
-                &who,
-                &Self::reward_pool_account(),
-                reward_pool_share,
-                ExistenceRequirement::KeepAlive,
-            )?;
+            // 费用分配：销毁 5%，国库 2%，存储 3%，推荐链 90%
+            Self::distribute_fee(&who, fee)?;
 
             // Create/update member info
             let member_info = MemberInfo {
@@ -498,28 +500,8 @@ pub mod pallet {
                 Error::<T>::InsufficientBalance
             );
 
-            let reward_pool_share = upgrade_cost
-                .saturating_mul(T::RewardPoolAllocation::get().into())
-                / 10000u32.into();
-            let treasury_share = upgrade_cost.saturating_sub(reward_pool_share);
-
-            if !treasury_share.is_zero() {
-                T::Currency::transfer(
-                    &who,
-                    &T::TreasuryAccount::get(),
-                    treasury_share,
-                    ExistenceRequirement::KeepAlive,
-                )?;
-            }
-
-            if !reward_pool_share.is_zero() {
-                T::Currency::transfer(
-                    &who,
-                    &Self::reward_pool_account(),
-                    reward_pool_share,
-                    ExistenceRequirement::KeepAlive,
-                )?;
-            }
+            // 费用分配：销毁 5%，国库 2%，存储 3%，推荐链 90%
+            Self::distribute_fee(&who, upgrade_cost)?;
 
             // Update tier (keep same expiration)
             let old_tier = member.tier;
@@ -837,19 +819,50 @@ pub mod pallet {
             MemberTier::Free
         }
 
-        /// Get monthly fee for a tier (in smallest unit).
-        pub fn get_tier_monthly_fee(tier: MemberTier) -> BalanceOf<T> {
-            // Assuming 12 decimals (1 DUST = 10^12 units)
-            let dust = 1_000_000_000_000u128;
-            let fee = match tier {
+        /// Get monthly fee for a tier in USDT (precision 10^6, e.g., 5_000_000 = 5 USDT).
+        pub fn get_tier_monthly_fee_usdt(tier: MemberTier) -> u64 {
+            match tier {
                 MemberTier::Free => 0,
-                MemberTier::Bronze => 5 * dust,      // 5 DUST
-                MemberTier::Silver => 25 * dust,     // 25 DUST
-                MemberTier::Gold => 80 * dust,       // 80 DUST
-                MemberTier::Platinum => 200 * dust,  // 200 DUST
-                MemberTier::Diamond => 500 * dust,   // 500 DUST
-            };
-            fee.try_into().ok().unwrap_or_else(Zero::zero)
+                MemberTier::Bronze => 5_000_000,      // 5 USDT
+                MemberTier::Silver => 25_000_000,     // 25 USDT
+                MemberTier::Gold => 80_000_000,       // 80 USDT
+                MemberTier::Platinum => 200_000_000,  // 200 USDT
+                MemberTier::Diamond => 500_000_000,   // 500 USDT
+            }
+        }
+
+        /// Get monthly fee for a tier (in DUST, converted from USDT via pricing).
+        pub fn get_tier_monthly_fee(tier: MemberTier) -> BalanceOf<T> {
+            let usdt_amount = Self::get_tier_monthly_fee_usdt(tier);
+            Self::usdt_to_dust(usdt_amount)
+        }
+
+        /// Convert USDT to DUST using pricing module.
+        /// 
+        /// USDT amount has precision 10^6 (e.g., 25_000_000 = 25 USDT)
+        /// Returns equivalent DUST amount with precision 10^12
+        fn usdt_to_dust(usdt_amount: u64) -> BalanceOf<T> {
+            if usdt_amount == 0 {
+                return Zero::zero();
+            }
+            
+            // Try to get DUST/USD rate from pricing module
+            if let Some(rate) = T::Pricing::get_dust_to_usd_rate() {
+                // rate is DUST/USD rate (precision 10^6), meaning 1 DUST = rate/10^6 USD
+                // dust_amount = usdt_amount * 10^12 / rate
+                let rate_u128: u128 = TryInto::<u128>::try_into(rate).unwrap_or(1_000_000);
+                if rate_u128 > 0 {
+                    let dust_amount = (usdt_amount as u128)
+                        .saturating_mul(1_000_000_000_000u128) // 10^12 (DUST precision)
+                        / rate_u128;
+                    return TryInto::<BalanceOf<T>>::try_into(dust_amount).ok().unwrap_or_else(Zero::zero);
+                }
+            }
+            
+            // Fallback: assume 1 DUST = 1 USDT
+            let dust = 1_000_000_000_000u128; // 1 DUST
+            let fallback = (usdt_amount as u128).saturating_mul(dust) / 1_000_000u128;
+            TryInto::<BalanceOf<T>>::try_into(fallback).ok().unwrap_or_else(Zero::zero)
         }
 
         /// Calculate subscription fee based on tier and duration.
@@ -857,14 +870,15 @@ pub mod pallet {
             tier: MemberTier,
             duration: SubscriptionDuration,
         ) -> BalanceOf<T> {
-            let monthly = Self::get_tier_monthly_fee(tier);
-            match duration {
-                SubscriptionDuration::Monthly => monthly,
+            let monthly_usdt = Self::get_tier_monthly_fee_usdt(tier);
+            let total_usdt = match duration {
+                SubscriptionDuration::Monthly => monthly_usdt,
                 SubscriptionDuration::Yearly => {
                     // 10 months for price of 12 (≈16.7% discount)
-                    monthly.saturating_mul(10u32.into())
+                    monthly_usdt.saturating_mul(10)
                 }
-            }
+            };
+            Self::usdt_to_dust(total_usdt)
         }
 
         /// Get storage deposit discount rate (basis points, 3000 = 30%).
@@ -1111,6 +1125,74 @@ pub mod pallet {
         pub fn can_receive_reward(who: &T::AccountId) -> bool {
             Self::is_past_cooldown(who)
                 && T::Currency::free_balance(who) >= T::MinBalanceForRewards::get()
+        }
+
+        /// 分配费用
+        /// 
+        /// 费用分配：销毁 5%，国库 2%，存储 3%，推荐链 90%
+        fn distribute_fee(who: &T::AccountId, fee: BalanceOf<T>) -> DispatchResult {
+            // 销毁：5%
+            let burn_amount = Self::calculate_percent(fee, 5);
+            // 国库：2%
+            let treasury_amount = Self::calculate_percent(fee, 2);
+            // 存储：3%
+            let storage_amount = Self::calculate_percent(fee, 3);
+            // 可分配：90%
+            let distributable = fee
+                .saturating_sub(burn_amount)
+                .saturating_sub(treasury_amount)
+                .saturating_sub(storage_amount);
+
+            // 销毁
+            if !burn_amount.is_zero() {
+                T::Currency::transfer(
+                    who,
+                    &T::BurnAccount::get(),
+                    burn_amount,
+                    ExistenceRequirement::KeepAlive,
+                )?;
+            }
+
+            // 国库
+            if !treasury_amount.is_zero() {
+                T::Currency::transfer(
+                    who,
+                    &T::TreasuryAccount::get(),
+                    treasury_amount,
+                    ExistenceRequirement::KeepAlive,
+                )?;
+            }
+
+            // 存储 - 充值到用户的 UserFunding 账户
+            if !storage_amount.is_zero() {
+                let user_funding_account = T::UserFundingProvider::derive_user_funding_account(who);
+                T::Currency::transfer(
+                    who,
+                    &user_funding_account,
+                    storage_amount,
+                    ExistenceRequirement::KeepAlive,
+                )?;
+            }
+
+            // 推荐链分配（90%）
+            if !distributable.is_zero() {
+                let distributable_u128: u128 = distributable.try_into().unwrap_or(0);
+                let _ = T::AffiliateDistributor::distribute_rewards(
+                    who,
+                    distributable_u128,
+                    None,
+                );
+            }
+
+            Ok(())
+        }
+
+        /// 计算百分比
+        fn calculate_percent(total: BalanceOf<T>, percent: u8) -> BalanceOf<T> {
+            if percent == 0 || percent > 100 {
+                return BalanceOf::<T>::zero();
+            }
+            total.saturating_mul(percent.into()) / 100u32.into()
         }
 
         /// Get remaining free AI quota for current month.

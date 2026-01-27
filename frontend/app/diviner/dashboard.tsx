@@ -2,7 +2,7 @@
  * 占卜师仪表盘页面
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,14 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { PageHeader } from '@/components/PageHeader';
 import { BottomNavBar } from '@/components/BottomNavBar';
+import { UnlockWalletDialog } from '@/components/UnlockWalletDialog';
+import { TransactionStatusDialog } from '@/components/TransactionStatusDialog';
 import {
   DashboardStats,
   DivinerOrderCard,
@@ -25,97 +29,156 @@ import {
   OrderStatus,
   DivinationType,
 } from '@/features/diviner';
+import { divinationMarketService, OrderStatus as ServiceOrderStatus } from '@/services/divination-market.service';
+import { useWalletStore } from '@/stores/wallet.store';
+import { isSignerUnlocked, unlockWalletForSigning } from '@/lib/signer';
 
 const THEME_COLOR = '#B2955D';
 
-// Mock 数据
-const mockProvider: Provider = {
-  account: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-  name: '玄机子',
-  bio: '从业20年，专注事业财运分析',
-  specialties: 0b0000_0101,
-  supportedTypes: 0b0000_0011,
-  status: ProviderStatus.Active,
-  tier: ProviderTier.Certified,
-  totalOrders: 156,
-  completedOrders: 148,
-  totalEarnings: BigInt(15680 * 1e10),
-  averageRating: 4.8,
-  ratingCount: 142,
-  acceptsUrgent: true,
-  registeredAt: Date.now() - 86400000 * 180,
-};
-
-const mockOrders: Order[] = [
-  {
-    id: 1001,
-    customer: '5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty',
-    provider: mockProvider.account,
-    packageId: 1,
-    divinationType: DivinationType.Meihua,
-    questionCid: 'QmXxx...',
-    totalAmount: BigInt(10 * 1e10),
-    platformFee: BigInt(1.5 * 1e10),
-    providerEarnings: BigInt(8.5 * 1e10),
-    isUrgent: false,
-    status: OrderStatus.Paid,
-    createdAt: Date.now() - 3600000,
-    followUpsUsed: 0,
-    followUpsTotal: 3,
-  },
-  {
-    id: 1002,
-    customer: '5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy',
-    provider: mockProvider.account,
-    packageId: 2,
-    divinationType: DivinationType.Bazi,
-    questionCid: 'QmYyy...',
-    totalAmount: BigInt(25 * 1e10),
-    platformFee: BigInt(3.75 * 1e10),
-    providerEarnings: BigInt(21.25 * 1e10),
-    isUrgent: true,
-    status: OrderStatus.Accepted,
-    createdAt: Date.now() - 7200000,
-    acceptedAt: Date.now() - 3600000,
-    followUpsUsed: 1,
-    followUpsTotal: 5,
-  },
-];
 
 export default function DivinerDashboardPage() {
   const router = useRouter();
+  const { address } = useWalletStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [provider, setProvider] = useState<Provider | null>(null);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
   const [availableBalance, setAvailableBalance] = useState(BigInt(0));
+  const [showUnlockDialog, setShowUnlockDialog] = useState(false);
+  const [showTxStatus, setShowTxStatus] = useState(false);
+  const [txStatus, setTxStatus] = useState('');
+  const [pendingAction, setPendingAction] = useState<'pause' | 'resume' | null>(null);
 
-  const loadData = async () => {
-    // TODO: 从链上加载数据
-    await new Promise(resolve => setTimeout(resolve, 800));
-    setProvider(mockProvider);
-    setPendingOrders(mockOrders);
-    setAvailableBalance(BigInt(1250 * 1e10));
-  };
+  const loadData = useCallback(async () => {
+    if (!address) return;
+
+    try {
+      // 从链上加载解卦师信息
+      const providerData = await divinationMarketService.getProviderByAccount(address);
+      if (providerData) {
+        setProvider({
+          account: providerData.account,
+          name: providerData.name,
+          bio: providerData.bio,
+          specialties: providerData.specialties,
+          supportedTypes: providerData.supportedTypes,
+          status: providerData.status === 'Active' ? ProviderStatus.Active : 
+                  providerData.status === 'Paused' ? ProviderStatus.Paused : ProviderStatus.Pending,
+          tier: ProviderTier.Certified,
+          totalOrders: providerData.totalOrders,
+          completedOrders: providerData.completedOrders,
+          totalEarnings: BigInt(0),
+          averageRating: providerData.rating / 100,
+          ratingCount: 0,
+          acceptsUrgent: true,
+          registeredAt: providerData.createdAt,
+        });
+
+        // 加载待处理订单
+        const orders = await divinationMarketService.getProviderOrders(providerData.id);
+        const pending = orders.filter((o: any) => o.status === ServiceOrderStatus.Paid || o.status === ServiceOrderStatus.Accepted);
+        setPendingOrders(pending.map((o: any) => ({
+          id: o.id,
+          customer: o.customer,
+          provider: address,
+          packageId: o.packageId,
+          divinationType: DivinationType.Meihua,
+          questionCid: o.questionCid,
+          totalAmount: o.amount,
+          platformFee: o.amount / 10n,
+          providerEarnings: o.amount * 9n / 10n,
+          isUrgent: false,
+          status: o.status === ServiceOrderStatus.Paid ? OrderStatus.Paid : OrderStatus.Accepted,
+          createdAt: o.createdAt,
+          followUpsUsed: 0,
+          followUpsTotal: 3,
+        })));
+      }
+    } catch (error) {
+      console.error('Load dashboard data error:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [address]);
 
   useEffect(() => {
-    loadData().finally(() => setLoading(false));
-  }, []);
+    loadData();
+  }, [loadData]);
 
-  const onRefresh = async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
+    loadData();
+  };
+
+  // 暂停/恢复服务
+  const handleToggleStatus = () => {
+    if (!provider) return;
+
+    const isPaused = provider.status === ProviderStatus.Paused;
+    const action = isPaused ? 'resume' : 'pause';
+
+    Alert.alert(
+      isPaused ? '恢复服务' : '暂停服务',
+      isPaused ? '恢复后您将可以接收新订单' : '暂停后您将不会接收新订单，已有订单不受影响',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认',
+          onPress: () => {
+            if (!isSignerUnlocked()) {
+              setPendingAction(action);
+              setShowUnlockDialog(true);
+              return;
+            }
+            executeToggleStatus(action);
+          },
+        },
+      ]
+    );
+  };
+
+  const executeToggleStatus = async (action: 'pause' | 'resume') => {
+    setShowTxStatus(true);
+    setTxStatus(action === 'pause' ? '正在暂停服务...' : '正在恢复服务...');
+
+    try {
+      if (action === 'pause') {
+        await divinationMarketService.pauseProvider((status) => setTxStatus(status));
+      } else {
+        await divinationMarketService.resumeProvider((status) => setTxStatus(status));
+      }
+
+      setTxStatus('操作成功！');
+      setTimeout(() => {
+        setShowTxStatus(false);
+        loadData();
+      }, 1500);
+    } catch (error: any) {
+      setShowTxStatus(false);
+      Alert.alert('操作失败', error.message || '请稍后重试');
+    }
+  };
+
+  const handleWalletUnlocked = async (password: string) => {
+    try {
+      await unlockWalletForSigning(password);
+      setShowUnlockDialog(false);
+      if (pendingAction) {
+        await executeToggleStatus(pendingAction);
+        setPendingAction(null);
+      }
+    } catch (error: any) {
+      Alert.alert('解锁失败', error.message || '密码错误');
+    }
   };
 
   const handleAcceptOrder = (orderId: number) => {
-    // TODO: 接单逻辑
-    console.log('Accept order:', orderId);
+    router.push(`/diviner/orders/${orderId}` as any);
   };
 
   const handleRejectOrder = (orderId: number) => {
-    // TODO: 拒单逻辑
-    console.log('Reject order:', orderId);
+    router.push(`/diviner/orders/${orderId}` as any);
   };
 
   const handleViewOrder = (orderId: number) => {
@@ -217,6 +280,45 @@ export default function DivinerDashboardPage() {
           )}
         </View>
 
+        {/* 服务状态卡片 */}
+        <View style={styles.section}>
+          <View style={styles.statusCard}>
+            <View style={styles.statusInfo}>
+              <Text style={styles.statusLabel}>服务状态</Text>
+              <View style={[
+                styles.statusBadge,
+                { backgroundColor: provider.status === ProviderStatus.Active ? '#4CD96420' : '#FF950020' }
+              ]}>
+                <Text style={[
+                  styles.statusBadgeText,
+                  { color: provider.status === ProviderStatus.Active ? '#4CD964' : '#FF9500' }
+                ]}>
+                  {provider.status === ProviderStatus.Active ? '正常接单' : '已暂停'}
+                </Text>
+              </View>
+            </View>
+            <Pressable
+              style={[
+                styles.toggleButton,
+                { backgroundColor: provider.status === ProviderStatus.Active ? '#FF950020' : '#4CD96420' }
+              ]}
+              onPress={handleToggleStatus}
+            >
+              <Ionicons
+                name={provider.status === ProviderStatus.Active ? 'pause' : 'play'}
+                size={16}
+                color={provider.status === ProviderStatus.Active ? '#FF9500' : '#4CD964'}
+              />
+              <Text style={[
+                styles.toggleButtonText,
+                { color: provider.status === ProviderStatus.Active ? '#FF9500' : '#4CD964' }
+              ]}>
+                {provider.status === ProviderStatus.Active ? '暂停服务' : '恢复服务'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
         {/* 更多操作 */}
         <View style={styles.section}>
           <Pressable style={styles.menuItem} onPress={() => router.push('/diviner/profile' as any)}>
@@ -231,6 +333,18 @@ export default function DivinerDashboardPage() {
           </Pressable>
         </View>
       </ScrollView>
+
+      <UnlockWalletDialog
+        visible={showUnlockDialog}
+        onClose={() => setShowUnlockDialog(false)}
+        onUnlock={handleWalletUnlocked}
+      />
+
+      <TransactionStatusDialog
+        visible={showTxStatus}
+        status={txStatus}
+        onClose={() => setShowTxStatus(false)}
+      />
 
       <BottomNavBar activeTab="profile" />
     </View>
@@ -337,6 +451,44 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#333',
+  },
+  statusCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 16,
+  },
+  statusInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  statusLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  toggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    gap: 4,
+  },
+  toggleButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   menuArrow: {
     fontSize: 20,

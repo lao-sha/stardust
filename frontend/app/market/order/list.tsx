@@ -22,6 +22,7 @@ import {
   LoadingSpinner,
   EmptyState,
 } from '@/divination/market/components';
+import { useAsync } from '@/hooks';
 import { THEME, SHADOWS } from '@/divination/market/theme';
 import { Order, OrderStatus } from '@/divination/market/types';
 import { formatTimeAgo, truncateAddress } from '@/divination/market/utils/market.utils';
@@ -42,7 +43,8 @@ export default function OrderListScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ type?: string; status?: string }>();
   const { address } = useWalletStore();
-  const { getMyOrders, getReceivedOrders, loading } = useOrders();
+  const { getMyOrders, getReceivedOrders } = useOrders();
+  const { execute, isLoading } = useAsync();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,16 +58,14 @@ export default function OrderListScreen() {
   const loadOrders = useCallback(async () => {
     if (!address) return;
 
-    try {
+    await execute(async () => {
       const fetchFn = orderType === 'my' ? getMyOrders : getReceivedOrders;
       const result = await fetchFn(
         statusFilter === 'all' ? undefined : statusFilter
       );
       setOrders(result);
-    } catch (err) {
-      console.error('Load orders error:', err);
-    }
-  }, [address, orderType, statusFilter, getMyOrders, getReceivedOrders]);
+    });
+  }, [address, orderType, statusFilter, getMyOrders, getReceivedOrders, execute]);
 
   useEffect(() => {
     loadOrders();
@@ -224,7 +224,7 @@ export default function OrderListScreen() {
           />
         }
         ListEmptyComponent={
-          loading ? (
+          isLoading ? (
             <LoadingSpinner text="加载中..." />
           ) : (
             <EmptyState

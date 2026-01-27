@@ -28,7 +28,7 @@ sp-io = { workspace = true }
 # Local
 pallet-divination-common = { workspace = true }
 pallet-tee-privacy = { path = "../tee-privacy", default-features = false }
-pallet-stardust-ipfs = { path = "../../stardust-ipfs", default-features = false }
+pallet-storage-service = { path = "../../storage-service", default-features = false }
 
 [dev-dependencies]
 sp-core = { workspace = true }
@@ -50,7 +50,7 @@ std = [
     "sp-io/std",
     "pallet-divination-common/std",
     "pallet-tee-privacy/std",
-    "pallet-stardust-ipfs/std",
+    "pallet-storage-service/std",
 ]
 runtime-benchmarks = [
     "frame-support/runtime-benchmarks",
